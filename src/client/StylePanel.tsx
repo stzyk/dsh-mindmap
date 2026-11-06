@@ -16,6 +16,7 @@ import * as React from "react";
 
 import type { MindNode } from "../core/tree.ts";
 import { MARKS, MAX_MARKS } from "../core/marks.ts";
+import { isThemeNode } from "../core/tree.ts";
 import {
   BORDER_WIDTHS,
   FONT_SIZES,
@@ -198,6 +199,40 @@ export function StylePanel({ store, state, node, depth, selectedIds }: StylePane
       </div>
 
       <div className="mm-style-body">
+        {/*
+         * 种类：主题 / 子节点。
+         *
+         * 主题 = 顶层并列的中心节点；子节点 = 挂在别人下面的节点。
+         * 这里可以直接切换，不用再去顶层拖拽。
+         */}
+        <div className="mm-style-row">
+          <span className="mm-style-label">种类</span>
+          <div className="mm-style-options">
+            <button
+              type="button"
+              className="mm-style-chip"
+              data-mm-kind="theme"
+              data-active={isThemeNode(node, depth) ? "true" : undefined}
+              title="作为顶层中心主题"
+              disabled={batch}
+              onClick={() => store.setNodeKind(node.id, "theme")}
+            >
+              主题
+            </button>
+            <button
+              type="button"
+              className="mm-style-chip"
+              data-mm-kind="node"
+              data-active={!isThemeNode(node, depth) ? "true" : undefined}
+              title="作为普通子节点（挂在父级下面）"
+              disabled={batch}
+              onClick={() => store.setNodeKind(node.id, "node")}
+            >
+              子节点
+            </button>
+          </div>
+        </div>
+
         {/*
          * 标识：给节点打「重点 / 易错」这类记号，复习时一眼扫出来。
          * 放在最前面——它比配色常用得多，改颜色是偶尔的事。

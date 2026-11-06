@@ -3848,12 +3848,11 @@ def main() -> int:
             detached = node_of("yy-a")
             record(
                 "5y5",
-                "删除连线后节点变成自由主题（和原主题并列）",
-                # 自由主题是容器根的一级子节点：深度 1，父级是那个不渲染的容器（文字为空）
-                after["multi"] is True
-                and detached is not None
-                and detached["d"] == 1
-                and detached["parent"] == "",
+                "删除连线后节点仍是子节点（层级不变，不会变成主题）",
+                # v0.18.0：断边只去掉那条线，节点留在原父级下
+                detached is not None
+                and detached["parent"] == "连线操作测试导图"
+                and after["multi"] is False,
                 json.dumps(detached, ensure_ascii=False),
             )
             record(
@@ -4118,9 +4117,10 @@ def main() -> int:
             # --- 删边后节点原地不动 ---
             page.evaluate("() => window.__mindmap.select('wb')")
             page.wait_for_timeout(700)
+            # 用布局坐标而不是屏幕矩形：屏幕位置会随滚动变化，和"原地不动"无关
             before_pos = page.evaluate("""() => {
-                const r = document.querySelector('[data-node-id="wb"]').getBoundingClientRect();
-                return {x: Math.round(r.x), y: Math.round(r.y)};
+                const el = document.querySelector('[data-node-id="wb"]');
+                return {x: Math.round(parseFloat(el.style.left)), y: Math.round(parseFloat(el.style.top))};
             }""")
             if page.locator('[data-mm-edge-remove="wb"]').count() > 0:
                 page.click('[data-mm-edge-remove="wb"]')
@@ -4128,8 +4128,7 @@ def main() -> int:
             after_pos = page.evaluate("""() => {
                 const el = document.querySelector('[data-node-id="wb"]');
                 if (!el) return null;
-                const r = el.getBoundingClientRect();
-                return {x: Math.round(r.x), y: Math.round(r.y)};
+                return {x: Math.round(parseFloat(el.style.left)), y: Math.round(parseFloat(el.style.top))};
             }""")
             record(
                 "5A8",

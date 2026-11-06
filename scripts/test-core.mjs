@@ -46,6 +46,9 @@ import {
   setLinkLabel,
   pruneLinks,
   repointEdge,
+  disconnectNode,
+  setNodeKind,
+  isThemeNode,
 } from "../src/core/tree.ts";
 import { MAX_MARKS } from "../src/core/marks.ts";
 import { toMarkdown, toMarkdownForest, toOutline, safeFileName } from "../src/core/markdown.ts";
@@ -1682,4 +1685,91 @@ test("删边后节点保持原位（不会跳到别处）", () => {
   const result = detachToTheme(root, false, "a", { x: 640, y: 220 });
   const detached = result.root.children.find((c) => c.id === "a");
   assert.deepEqual(detached.position, { x: 640, y: 220 });
+});
+
+/* ------------------------------------------------------------------ *
+ * 断开连线：节点留在原位，不变主题
+ * ------------------------------------------------------------------ */
+
+test("断开连线：节点仍在原父级下，层级和子树不变", () => {
+  const root = {
+    id: "r",
+    text: "中心",
+    children: [
+      { id: "a", text: "A", children: [{ id: "a1", text: "A1", children: [] }] },
+      { id: "b", text: "B", children: [] },
+    ],
+  };
+  const next = disconnectNode(root, "a");
+  assert.ok(next);
+  const a = next.children[0];
+  assert.equal(a.id, "a", "还在原来的位置（第 0 个孩子）");
+  assert.equal(a.detached, true, "标记为已断开");
+  // 不钉手动坐标：结构没变，自动布局算出来就是原位
+  assert.equal(a.position, undefined, "不应该被钉上手动坐标");
+  assert.equal(a.children.length, 1, "子树不动");
+  assert.equal(next.children.length, 2, "没有多出一个顶层主题");
+});
+
+test("断开连线后布局不再画那条线，但节点仍参与布局", () => {
+  const root = {
+    id: "r",
+    text: "根",
+    children: [
+      { id: "a", text: "A", detached: true, position: { x: 300, y: 200 }, children: [] },
+      { id: "b", text: "B", children: [] },
+    ],
+  };
+  const layout = layoutTree(root);
+  assert.equal(layout.links.some((l) => l.toId === "a"), false, "断开的线不画");
+  assert.equal(layout.links.some((l) => l.toId === "b"), true, "其它线照常");
+  assert.equal(layout.nodes.find((n) => n.id === "a").x, 300, "节点仍在手动坐标上");
+});
+
+test("断开连线：根节点和已断开的节点不能再断", () => {
+  const root = { id: "r", text: "根", children: [{ id: "a", text: "A", children: [] }] };
+  assert.equal(disconnectNode(root, "r"), undefined, "根节点没有上级");
+  assert.equal(disconnectNode(root, "nope"), undefined);
+});
+
+/* ------------------------------------------------------------------ *
+ * 节点种类：主题 / 子节点
+ * ------------------------------------------------------------------ */
+
+test("种类：按结构推断（顶层 = 主题）", () => {
+  const top = { id: "a", text: "A", children: [] };
+  assert.equal(isThemeNode(top, 0), true, "顶层默认是主题");
+  assert.equal(isThemeNode(top, 1), false, "深层默认是子节点");
+  assert.equal(isThemeNode({ ...top, kind: "theme" }, 3), true, "显式 kind 优先");
+  assert.equal(isThemeNode({ ...top, kind: "node" }, 0), false);
+});
+
+test("种类：子节点升成主题（单主题文档会升级成多主题）", () => {
+  const root = {
+    id: "r",
+    text: "中心",
+    children: [{ id: "a", text: "A", children: [{ id: "a1", text: "A1", children: [] }] }],
+  };
+  const result = setNodeKind(root, "a", "theme", false, { x: 500, y: 300 });
+  assert.ok(result);
+  assert.equal(result.multiTheme, true, "必须升成多主题，否则没有顶层并列");
+  assert.deepEqual(result.root.children.map((c) => c.id), ["r", "a"], "A 挂到顶层");
+  const a = result.root.children.find((c) => c.id === "a");
+  assert.equal(a.kind, "theme");
+  assert.deepEqual(a.position, { x: 500, y: 300 }, "保留位置");
+  assert.equal(a.children.length, 1, "子树跟着走");
+});
+
+test("种类：主题降成子节点（变成游离，但不丢）", () => {
+  const root = {
+    id: "c",
+    text: "",
+    children: [{ id: "t1", text: "主题一", children: [] }],
+  };
+  const result = setNodeKind(root, "t1", "node", true, { x: 40, y: 60 });
+  assert.ok(result);
+  const t1 = result.root.children.find((c) => c.id === "t1");
+  assert.equal(t1.kind, "node");
+  assert.equal(t1.detached, true, "顶层节点没有父级连线，降级后表现为游离");
+  assert.deepEqual(t1.position, { x: 40, y: 60 });
 });

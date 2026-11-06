@@ -27,6 +27,24 @@ export interface MindNode {
   /** 是否收起子节点（true 时子树不参与布局，但仍保留在数据里）。 */
   collapsed?: boolean;
   /**
+   * 连到父节点的那条线**是否断开**。
+   *
+   * 断开后节点仍然留在原来的父级下（结构不变、层级不变、样式不变），
+   * 只是不画那条线，并且按手动坐标悬浮在原处。
+   *
+   * 为什么不把它从树里摘出来：树模型要求每个节点有父级，
+   * 摘出来就只能挂到顶层当"主题"——那正是用户不想要的效果
+   * （"断开后还是子节点，不要变成主题节点"）。
+   */
+  detached?: boolean;
+  /**
+   * 节点种类：主题 / 子节点。
+   *
+   * 缺省按结构推断（顶层 = 主题，其余 = 子节点）；显式设置用于
+   * 在属性面板里把某个节点升成主题、或把主题降成子节点。
+   */
+  kind?: "theme" | "node";
+  /**
    * 手动摆放的坐标（相对画布左上角）。
    *
    * 不填 = 交给自动布局（右向树）；一旦用户拖动过就有了固定位置。
@@ -258,6 +276,8 @@ export function normalizeNode(input: unknown, budget = { left: MAX_NODES }, dept
     typeof raw.edgeLabel === "string" ? raw.edgeLabel.replace(/\s+/g, " ").trim().slice(0, MAX_EDGE_LABEL) : "";
   if (edgeLabel.length > 0) node.edgeLabel = edgeLabel;
   if (raw.collapsed === true) node.collapsed = true;
+  if (raw.detached === true) node.detached = true;
+  if (raw.kind === "theme" || raw.kind === "node") node.kind = raw.kind;
   // 坐标只接受两个有限数；越界（比如手改文件写成 1e9）直接丢弃，回自动布局，
   // 否则节点会跑到画布外面再也没法点回来。
   const pos = raw.position as { x?: unknown; y?: unknown } | null | undefined;
@@ -415,6 +435,8 @@ export function cloneNode(node: MindNode): MindNode {
   if (node.marks !== undefined && node.marks.length > 0) copy.marks = [...node.marks];
   if (node.edgeLabel !== undefined) copy.edgeLabel = node.edgeLabel;
   if (node.collapsed === true) copy.collapsed = true;
+  if (node.detached === true) copy.detached = true;
+  if (node.kind !== undefined) copy.kind = node.kind;
   if (node.position !== undefined) copy.position = { x: node.position.x, y: node.position.y };
   if (node.images !== undefined && node.images.length > 0) copy.images = node.images.map((image) => ({ ...image }));
   if (node.style !== undefined) copy.style = { ...node.style };
@@ -1300,4 +1322,116 @@ export function pruneLinks(links: readonly MindLink[] | undefined, root: MindNod
   walk(root);
   const next = links.filter((link) => ids.has(link.from) && ids.has(link.to));
   return next.length > 0 ? next : undefined;
+}
+
+/* ------------------------------------------------------------------ *
+ * 断开连线（节点留在原地，不变主题）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 断开一条连线。
+ *
+ * **节点不出树**：它仍然是原来那个父级的子节点，层级、样式、子树全都不变，
+ * 只是不再画那条线，并按给定的当前位置悬浮。
+ *
+ * 这和"升格成自由主题"是两种不同需求：
+ *   - 升格：用户想把这块内容独立出来当一张新图；
+ *   - 断开：用户只是觉得"这条关系不成立"，节点本身还留在原来的层级里。
+ * 早期实现一律走升格，导致"断一条线，节点跳成主题、层级和样式都变了"。
+ *
+ * @param position - 节点当前的布局坐标（传进来就能原地不动）。
+ * @returns 新树；节点不存在 / 是根节点 / 本来就没有连线时返回 undefined。
+ */
+export function disconnectNode(
+  root: MindNode,
+  id: string,
+  position?: { x: number; y: number },
+): MindNode | undefined {
+  const next = cloneNode(root);
+  const target = locate(next, id);
+  if (target === undefined) return undefined;
+  // 根节点没有上级连线
+  if (target.parent === undefined) return undefined;
+  // 已经是顶层（主题）的节点，本来就没有连线
+  if (target.parent.id === next.id && next.children.length > 0 && next.text.length === 0) return undefined;
+  target.node.detached = true;
+  /*
+   * 不要钉坐标。
+   *
+   * 断开连线**不改变树结构**（节点还在原父级的同一个位置），
+   * 所以自动布局算出来的坐标和断开前完全一致——钉一个手动坐标反而是多余的，
+   * 而且一旦传进来的值和布局有偏差，节点就会跳一下。
+   * 原本就有手动坐标的节点保留原坐标。
+   */
+  void position;
+  return next;
+}
+
+/**
+ * 设置节点种类。
+ *
+ * @param kind - "theme" 升成顶层主题；"node" 降成普通子节点（悬浮在原处）。
+ * @returns 新树与新树的多主题标记；节点不存在时返回 undefined。
+ */
+export function setNodeKind(
+  root: MindNode,
+  id: string,
+  kind: "theme" | "node",
+  multiTheme: boolean,
+  position?: { x: number; y: number },
+): { root: MindNode; multiTheme: boolean } | undefined {
+  const source = locate(root, id);
+  if (source === undefined) return undefined;
+
+  if (kind === "theme") {
+    /*
+     * 升成主题 = 挂到容器根的一级。
+     * 单主题文档要先升级成多主题（否则没有"顶层并列"这回事）。
+     */
+    let base = root;
+    let multi = multiTheme;
+    if (!multi) {
+      base = { id: newId(), text: "", children: [cloneNode(root)] };
+      multi = true;
+    }
+    const next = cloneNode(base);
+    const target = locate(next, id);
+    if (target === undefined) return undefined;
+    // 已经在顶层了
+    if (target.parent !== undefined && target.parent.id === next.id) {
+      const themed = cloneNode(next);
+      const again = locate(themed, id);
+      if (again !== undefined) {
+        again.node.kind = "theme";
+        delete again.node.detached;
+      }
+      return { root: themed, multiTheme: true };
+    }
+    if (target.parent === undefined) return undefined;
+    target.parent.children.splice(target.index, 1);
+    delete target.node.detached;
+    target.node.kind = "theme";
+    if (position !== undefined) target.node.position = { x: position.x, y: position.y };
+    next.children.push(target.node);
+    return { root: next, multiTheme: true };
+  }
+
+  // 降成普通子节点：只改标记，不动结构（脱离父级的视觉表现由 detached 负责）
+  const next = cloneNode(root);
+  const target = locate(next, id);
+  if (target === undefined) return undefined;
+  target.node.kind = "node";
+  const isTopLevel = target.parent !== undefined && target.parent.id === next.id;
+  if (isTopLevel) {
+    // 顶层节点没有父级连线可画，降级后表现为"游离"
+    target.node.detached = true;
+    if (position !== undefined) target.node.position = { x: position.x, y: position.y };
+  }
+  return { root: next, multiTheme };
+}
+
+/** 这个节点是不是主题（显式 kind 优先，否则看它是不是顶层一级）。 */
+export function isThemeNode(node: MindNode, depth: number): boolean {
+  if (node.kind !== undefined) return node.kind === "theme";
+  return depth === 0;
 }

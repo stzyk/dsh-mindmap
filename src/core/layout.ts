@@ -79,6 +79,8 @@ export interface LayoutNode {
   edgeLabel?: string;
   /** 节点标识的符号（已按 key 解析成 emoji，渲染层直接用）。 */
   marks?: string[];
+  /** 连到父节点的那条线是否被断开（断开的节点不画线，但仍参与布局）。 */
+  detached?: boolean;
 }
 
 /** 一条父子连线（从父方框右中点连到子方框左中点）。 */
@@ -356,6 +358,7 @@ export function layoutTree(
       id: node.id,
       text: node.text,
       ...(node.edgeLabel !== undefined ? { edgeLabel: node.edgeLabel } : {}),
+      ...(node.detached === true ? { detached: true } : {}),
       ...(node.marks !== undefined && node.marks.length > 0
         ? { marks: node.marks.map((key) => markOf(key)?.glyph ?? "").filter((g) => g.length > 0) }
         : {}),
@@ -425,6 +428,12 @@ export function layoutTree(
     if (parentId === undefined) continue;
     const parent = byId.get(parentId);
     if (parent === undefined) continue;
+    /*
+     * 连线被断开（detached）的节点不画线，但**仍然参与布局**：
+     * 它有手动坐标，会停在被断开时的位置，层级和子树都不变。
+     * 放在布局层判断，画布 / 导出 / 测试就都一致了。
+     */
+    if (node.detached === true) continue;
     const x1 = parent.x + parent.width;
     const y1 = parent.y + parent.height / 2;
     const x2 = node.x;

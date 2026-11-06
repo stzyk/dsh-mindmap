@@ -29,6 +29,8 @@ import {
   cloneNode,
   countNodes,
   detachToTheme,
+  disconnectNode,
+  setNodeKind,
   duplicateNodes,
   repointEdge,
   locate,
@@ -872,16 +874,36 @@ export function createStore(): MindmapStore {
 
     detachEdge(childId, position) {
       if (state.doc === null) return false;
-      const result = detachToTheme(state.doc.root, state.doc.multiTheme === true, childId, position);
-      if (result === undefined) {
-        toast("这条连线删不掉（根节点没有上级，主题本身也没有连线）", "error");
+      /*
+       * 断开连线 = 只把那条线去掉，**节点留在原父级下**：
+       * 层级、样式、子树都不变，只是按当前位置悬浮（用户要求 v0.18.0）。
+       * 早期实现是"升格成自由主题"，会让节点跳到顶层、层级和样式一起变。
+       */
+      // 不传坐标：断开不改变树结构，自动布局会把它留在原位
+      const next = disconnectNode(state.doc.root, childId);
+      if (next === undefined) {
+        toast("这条连线断不开（根节点没有上级，主题本身也没有连线）", "error");
         return false;
       }
-      /*
-       * 不能走 mutateTree：它用的是"当前 doc 的 multiTheme"，
-       * 而删边**就是要把它从 false 改成 true**（单主题升多主题）。
-       */
-      history.push(result.root, result.themeId, result.multiTheme);
+      mutateTree(next);
+      toast("已断开连线（节点还在原位）");
+      return true;
+    },
+
+    setNodeKind(id, kind, position) {
+      if (state.doc === null) return;
+      const result = setNodeKind(
+        state.doc.root,
+        id,
+        kind,
+        state.doc.multiTheme === true,
+        position,
+      );
+      if (result === undefined) {
+        toast("改不了这个节点的种类", "error");
+        return;
+      }
+      history.push(result.root, id, result.multiTheme, state.doc.links ?? []);
       set({
         doc: {
           ...state.doc,
@@ -889,14 +911,13 @@ export function createStore(): MindmapStore {
           multiTheme: result.multiTheme,
           updatedAt: Date.now(),
         },
-        selectedId: result.themeId,
-        selectedIds: [result.themeId],
+        selectedId: id,
+        selectedIds: [id],
         editingId: null,
       });
       syncHistory();
       scheduleSave();
-      toast("已删除连线，这个节点变成了自由主题");
-      return true;
+      toast(kind === "theme" ? "已设为主题" : "已设为子节点");
     },
 
     repointEdge(oldChildId, newChildId, position) {
