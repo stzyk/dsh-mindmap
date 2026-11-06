@@ -2836,7 +2836,8 @@ def main() -> int:
                 raise RuntimeError("找不到节点包围盒")
             # v0.16.0 起两端语义不同：**父端** = 把这个节点挂到落点下，
             # 子端 = 改这条线连到谁。这里测"改挂"，所以拖父端手柄。
-            page.evaluate("() => window.__mindmap.select('eg-a')")
+            # v0.22.0：线是独立对象，手柄只在**选中线**时出现（选中节点不出现）
+            page.evaluate("() => window.__mindmap.selectEdge('eg-a')")
             page.wait_for_timeout(600)
             handle = page.locator('[data-mm-edge-handle="eg-a"][data-mm-end="parent"]').bounding_box()
             if handle is None:
@@ -3802,8 +3803,21 @@ def main() -> int:
                 page.wait_for_timeout(900)
                 return ghost
 
-            # --- 选中节点后，入边两端出现手柄，中点出现删除按钮 ---
+            # --- v0.22.0：线是独立对象，先选中节点确认"不出现线的工具" ---
             page.evaluate("() => window.__mindmap.select('yy-a')")
+            page.wait_for_timeout(800)
+            node_tools = page.evaluate("""() => ({
+                handles: document.querySelectorAll('[data-mm-edge-handle="yy-a"]').length,
+                remove: document.querySelectorAll('[data-mm-edge-remove="yy-a"]').length,
+            })""")
+            record(
+                "5y-0",
+                "选中节点时不出现连线的删除按钮和端点手柄（线是独立对象）",
+                node_tools["handles"] == 0 and node_tools["remove"] == 0,
+                json.dumps(node_tools),
+            )
+            # 选中线本身才会出现这些工具
+            page.evaluate("() => window.__mindmap.selectEdge('yy-a')")
             page.wait_for_timeout(800)
             tools = page.evaluate("""() => ({
                 handles: document.querySelectorAll('[data-mm-edge-handle="yy-a"]').length,
@@ -3813,7 +3827,7 @@ def main() -> int:
             })""")
             record(
                 "5y0",
-                "选中节点后，它的连线两端各有一个可拖拽端点",
+                "选中连线后，两端各有一个可拖拽端点",
                 tools["handles"] == 2 and tools["parentEnd"] and tools["childEnd"],
                 json.dumps(tools),
             )
@@ -3833,7 +3847,7 @@ def main() -> int:
             # --- 撤销后拖子端，结果一致 ---
             page.evaluate("() => window.__mindmap.undo()")
             page.wait_for_timeout(800)
-            page.evaluate("() => window.__mindmap.select('yy-a')")
+            page.evaluate("() => window.__mindmap.selectEdge('yy-a')")
             page.wait_for_timeout(700)
             # 子端手柄也要能用（两端都可操作）。这里只验证手柄能启动拖动，
             # 具体改接语义由 5A7 覆盖。
@@ -3843,7 +3857,7 @@ def main() -> int:
             # --- 删除连线：A 变成自由主题，内容不丢 ---
             page.evaluate("() => window.__mindmap.undo()")
             page.wait_for_timeout(800)
-            page.evaluate("() => window.__mindmap.select('yy-a')")
+            page.evaluate("() => window.__mindmap.selectEdge('yy-a')")
             page.wait_for_timeout(700)
             page.click('[data-mm-edge-remove="yy-a"]')
             page.wait_for_timeout(1000)
@@ -4088,7 +4102,7 @@ def main() -> int:
             record("5A6", "删除关系线可以撤销", len(links()) == 2, json.dumps(links()))
 
             # --- 拖尾端改接：A->A2 拖到 C，应变成 A->C ---
-            page.evaluate("() => window.__mindmap.select('wa2')")
+            page.evaluate("() => window.__mindmap.selectEdge('wa2')")
             page.wait_for_timeout(700)
             h = page.locator('[data-mm-edge-handle="wa2"][data-mm-end="child"]').bounding_box()
             tc = page.locator('[data-node-id="wc"]').bounding_box()
@@ -4117,8 +4131,8 @@ def main() -> int:
                 json.dumps(parent_of, ensure_ascii=False),
             )
 
-            # --- 删边后节点原地不动 ---
-            page.evaluate("() => window.__mindmap.select('wb')")
+            # --- 删边后节点原地不动（v0.22.0：先选中线才有删除按钮）---
+            page.evaluate("() => window.__mindmap.selectEdge('wb')")
             page.wait_for_timeout(700)
             # 用布局坐标而不是屏幕矩形：屏幕位置会随滚动变化，和"原地不动"无关
             before_pos = page.evaluate("""() => {

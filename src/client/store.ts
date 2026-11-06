@@ -32,6 +32,7 @@ import {
   disconnectNode,
   setNodeKind,
   sortSiblingsByPosition,
+  setEdgeStyle,
   duplicateNodes,
   repointEdge,
   locate,
@@ -889,6 +890,29 @@ export function createStore(): MindmapStore {
       mutateTree(next);
       toast("已断开连线（节点还在原位）");
       return true;
+    },
+
+    setEdgeStyle(id, style) {
+      if (state.doc === null) return;
+      const next = setEdgeStyle(state.doc.root, id, style);
+      if (next === undefined) {
+        toast("这条线改不了（根节点没有入边）", "error");
+        return;
+      }
+      /*
+       * 同时记住成文档默认值：用户改了一次线型，多半希望后面的线也这样，
+       * 而不是每加一个节点都回来改一次。
+       */
+      set({
+        doc: {
+          ...state.doc,
+          root: next,
+          linkStyle: style ?? "solid",
+          updatedAt: Date.now(),
+        },
+      });
+      pushDoc({ root: next });
+      scheduleSave();
     },
 
     sortByPosition() {

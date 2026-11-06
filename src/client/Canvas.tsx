@@ -234,13 +234,18 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
     return layout.nodes.find((node) => node.id === selectedId) ?? null;
   }, [layout, selectedId]);
 
-  /** 选中节点的入边（显式点中的连线优先）。 */
+  /**
+   * 当前被**显式选中**的连线。
+   *
+   * 只认 selectedEdgeId，不再回退到"选中节点就带出它的入边"：
+   * 选中节点时用户要改的是节点（文字、样式、图片），
+   * 线上却冒出一个删除按钮和两个端点手柄，很容易误删。
+   * 线是独立对象，想改线就点线本身。
+   */
   const selectedIncomingLink = React.useMemo(() => {
-    if (layout === null) return null;
-    const target = state.selectedEdgeId ?? selectedId;
-    if (target === null) return null;
-    return layout.links.find((link) => link.toId === target) ?? null;
-  }, [layout, selectedId, state.selectedEdgeId]);
+    if (layout === null || state.selectedEdgeId === null) return null;
+    return layout.links.find((link) => link.toId === state.selectedEdgeId) ?? null;
+  }, [layout, state.selectedEdgeId]);
 
   /** 选中节点的祖先 id 集合：用于路径高亮。 */
   const pathIds = React.useMemo(() => {
@@ -2119,6 +2124,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                   className="mm-link"
                   data-active={pathIds.has(link.fromId) && pathIds.has(link.toId) ? "true" : undefined}
                   data-selected={state.selectedEdgeId === link.toId ? "true" : undefined}
+                  data-style={link.style ?? doc.linkStyle ?? "solid"}
                   d={d}
                 />
                 {/*
@@ -2203,6 +2209,48 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                 const HANDLE_INSET = 10;
                 return (
                   <g className="mm-edge-tools">
+                    {/*
+                     * 线型切换：只有选中这条线时才出现。
+                     * 选中节点时不该出现任何"改线"的入口（线是独立对象）。
+                     */}
+                    <g
+                      className="mm-edge-style"
+                      transform={
+                        "translate(" +
+                        String(midX + 44) +
+                        ", " +
+                        String(midY - 18) +
+                        ")"
+                      }
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <rect
+                        className="mm-edge-style-bg"
+                        x={0}
+                        y={0}
+                        width={86}
+                        height={20}
+                        rx={10}
+                      />
+                      <text
+                        className="mm-edge-style-opt"
+                        data-active={(link.style ?? doc.linkStyle ?? "solid") === "solid" ? "true" : undefined}
+                        x={22}
+                        y={14}
+                        onClick={() => store.setEdgeStyle(link.toId, "solid")}
+                      >
+                        实线
+                      </text>
+                      <text
+                        className="mm-edge-style-opt"
+                        data-active={(link.style ?? doc.linkStyle ?? "solid") === "dashed" ? "true" : undefined}
+                        x={64}
+                        y={14}
+                        onClick={() => store.setEdgeStyle(link.toId, "dashed")}
+                      >
+                        虚线
+                      </text>
+                    </g>
                     <circle
                       className="mm-edge-handle"
                       cx={link.x1 + HANDLE_INSET}
@@ -2330,16 +2378,16 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
             : null}
 
           {/*
-           * 选中节点底部的"拉线"小圆点：从这里拖到另一个节点就建一条自由连线。
+           * 选中节点**右边缘中点**的"拉线"小圆点：拖到另一个节点就建一条自由连线。
            *
-           * 放在底部中点而不是右侧：右侧被父子连线的端点手柄占着，
-           * 两个圆点挨太近会互相抢点击。
+           * 放在右侧而不是底部：连接点统一在方框的左右两端，
+           * 底部出现圆点会让"这里能拖"和"这里能连线"两种暗示混在一起。
            */}
           {selectedNode !== null ? (
             <circle
               className="mm-link-dot"
-              cx={selectedNode.x + selectedNode.width / 2}
-              cy={selectedNode.y + selectedNode.height}
+              cx={selectedNode.x + selectedNode.width}
+              cy={selectedNode.y + selectedNode.height / 2}
               r={6}
               data-mm-link-dot={selectedNode.id}
               onPointerDown={(event) => onLinkDotPointerDown(event, selectedNode.id)}

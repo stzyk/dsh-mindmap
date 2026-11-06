@@ -81,6 +81,8 @@ export interface LayoutNode {
   marks?: string[];
   /** 连到父节点的那条线是否被断开（断开的节点不画线，但仍参与布局）。 */
   detached?: boolean;
+  /** 连到父节点那条线的样式（缺省跟随文档默认）。 */
+  edgeStyle?: "solid" | "dashed";
 }
 
 /** 一条父子连线（从父方框右中点连到子方框左中点）。 */
@@ -414,6 +416,7 @@ export function layoutTree(
       text: node.text,
       ...(node.edgeLabel !== undefined ? { edgeLabel: node.edgeLabel } : {}),
       ...(node.detached === true ? { detached: true } : {}),
+      ...(node.edgeStyle !== undefined ? { edgeStyle: node.edgeStyle } : {}),
       ...(node.marks !== undefined && node.marks.length > 0
         ? { marks: node.marks.map((key) => markOf(key)?.glyph ?? "").filter((g) => g.length > 0) }
         : {}),
@@ -508,6 +511,7 @@ export function layoutTree(
     links.push({
       fromId: parent.id,
       toId: node.id,
+      ...(node.edgeStyle !== undefined ? { style: node.edgeStyle } : {}),
       x1,
       y1,
       x2,

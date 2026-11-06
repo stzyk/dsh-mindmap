@@ -518,23 +518,29 @@ img.mm-node-img { cursor: zoom-in; }
   color: var(--dsw-alias-label-primary, #1a1a1a);
 }
 /* 折叠按钮：贴在方框右边缘的小圆点，内容量是它唯一要表达的事 */
+/*
+ * 折叠按钮：跟在文字后面（inline），不再绝对定位到右边缘。
+ *
+ * 原来它贴在节点右边框上，正好压在连线端点上——两个小圆挤在一起，
+ * 点折叠却误拖了线，点端点又误折叠。放到文字后面既避开冲突，
+ * 也和"这个按钮属于这个节点"的语义一致。
+ */
 .mm-fold {
-  position: absolute;
-  right: -9px;
-  top: 50%;
-  translate: 0 -50%;
-  min-width: 16px;
-  height: 16px;
+  flex: none;
+  margin-left: 4px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 3px;
   border-radius: 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.2));
   background: var(--dsw-alias-bg-base, #fff);
   color: var(--dsw-alias-label-secondary, #666);
-  font: 10px/14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 10px/13px ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  vertical-align: middle;
   transition: border-color .12s ease, color .12s ease;
 }
 .mm-fold:hover {
@@ -2028,6 +2034,35 @@ img.mm-node-img { cursor: zoom-in; }
 }
 .mm-node[data-match-current="true"] {
   box-shadow: 0 0 0 3px var(--dsw-alias-state-business-primary, #4a7dff);
+}
+
+/* 线型：虚线用 dasharray，实线保持默认 */
+.mm-link[data-style="dashed"] {
+  stroke-dasharray: 7 5;
+}
+.mm-link-hit[data-style="dashed"] {
+  stroke-dasharray: 7 5;
+}
+
+/* ── 连线线型切换 ─────────────────────────────────────── */
+.mm-edge-style {
+  cursor: pointer;
+}
+.mm-edge-style-bg {
+  fill: var(--dsw-alias-bg-base, #fff);
+  stroke: var(--dsw-alias-border-l2, rgba(0, 0, 0, .2));
+  stroke-width: 1;
+}
+.mm-edge-style-opt {
+  font-size: 11px;
+  fill: var(--dsw-alias-label-secondary, #666);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  user-select: none;
+}
+.mm-edge-style-opt[data-active="true"] {
+  fill: var(--dsw-alias-state-business-primary, #4a7dff);
+  font-weight: 600;
 }
 
 `;

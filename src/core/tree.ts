@@ -38,6 +38,10 @@ export interface MindNode {
    */
   detached?: boolean;
   /**
+   * 连到父节点那条线的样式。不填 = 跟随文档默认（`MindDoc.linkStyle`）。
+   */
+  edgeStyle?: "solid" | "dashed";
+  /**
    * 节点种类：主题 / 子节点。
    *
    * 缺省按结构推断（顶层 = 主题，其余 = 子节点）；显式设置用于
@@ -147,6 +151,10 @@ export interface MindLink {
 export interface MindDoc {
   id: string;
   title: string;
+  /**
+   * 连线的默认样式。新加的线跟随它；节点上的 `edgeStyle` 优先。
+   */
+  linkStyle?: "solid" | "dashed";
   /**
    * 树的根。
    *
@@ -278,6 +286,7 @@ export function normalizeNode(input: unknown, budget = { left: MAX_NODES }, dept
   if (raw.collapsed === true) node.collapsed = true;
   if (raw.detached === true) node.detached = true;
   if (raw.kind === "theme" || raw.kind === "node") node.kind = raw.kind;
+  if (raw.edgeStyle === "solid" || raw.edgeStyle === "dashed") node.edgeStyle = raw.edgeStyle;
   // 坐标只接受两个有限数；越界（比如手改文件写成 1e9）直接丢弃，回自动布局，
   // 否则节点会跑到画布外面再也没法点回来。
   const pos = raw.position as { x?: unknown; y?: unknown } | null | undefined;
@@ -437,6 +446,7 @@ export function cloneNode(node: MindNode): MindNode {
   if (node.collapsed === true) copy.collapsed = true;
   if (node.detached === true) copy.detached = true;
   if (node.kind !== undefined) copy.kind = node.kind;
+  if (node.edgeStyle !== undefined) copy.edgeStyle = node.edgeStyle;
   if (node.position !== undefined) copy.position = { x: node.position.x, y: node.position.y };
   if (node.images !== undefined && node.images.length > 0) copy.images = node.images.map((image) => ({ ...image }));
   if (node.style !== undefined) copy.style = { ...node.style };
@@ -1471,4 +1481,25 @@ export function sortSiblingsByPosition(root: MindNode): MindNode | undefined {
   };
   walk(next);
   return changed ? next : undefined;
+}
+
+/**
+ * 设置某条连线（= 某节点的入边）的线型。
+ *
+ * @param style - "solid" / "dashed"；传 undefined 表示恢复跟随文档默认。
+ * @returns 新树；节点不存在或没有入边时返回 undefined。
+ */
+export function setEdgeStyle(
+  root: MindNode,
+  id: string,
+  style: "solid" | "dashed" | undefined,
+): MindNode | undefined {
+  const next = cloneNode(root);
+  const target = locate(next, id);
+  if (target === undefined) return undefined;
+  // 根节点 / 顶层主题没有入边
+  if (target.parent === undefined) return undefined;
+  if (style === undefined) delete target.node.edgeStyle;
+  else target.node.edgeStyle = style;
+  return next;
 }
