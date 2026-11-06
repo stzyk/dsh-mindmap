@@ -55,6 +55,7 @@ import { NodeTooltip, useNodeTooltip } from "./NodeTooltip.tsx";
 import { NodePictures } from "./NodeImage.tsx";
 import { Lightbox, type LightboxTarget } from "./Lightbox.tsx";
 import { uploadImage } from "./images.ts";
+import { loadView, saveView } from "./viewState.ts";
 
 /** 组件 props：store + 当前视图状态。 */
 interface CanvasProps {
@@ -334,6 +335,63 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
     },
     [zoom, applyZoom],
   );
+
+  /**
+   * 打开文档时恢复上次的视口位置（滚动 + 缩放）。
+   *
+   * 放在 layout 算好之后再执行：滚动范围要等画布尺寸定了才有效，
+   * 否则设进去的 scrollLeft 会被浏览器夹到 0。
+   */
+  const restoredDocRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (doc === null || layout === null) return;
+    // 同一份文档只恢复一次：否则每次重排/编辑都会把视图拽回去
+    if (restoredDocRef.current === doc.id) return;
+    restoredDocRef.current = doc.id;
+    const saved = loadView(doc.id);
+    if (saved === undefined) return;
+    // 缩放先落，再等一帧让画布按新尺寸重排后设置滚动位置
+    setZoom(saved.zoom);
+    requestAnimationFrame(() => {
+      const wrap = scrollRef.current;
+      if (wrap === null) return;
+      wrap.scrollLeft = saved.left;
+      wrap.scrollTop = saved.top;
+    });
+  }, [doc?.id, layout]);
+
+  /**
+   * 记录视口位置（防抖 500ms）。
+   *
+   * 拖滚动条/平移是高频动作，每次写 localStorage 既浪费又卡；
+   * 停下来半秒再写就够用了。
+   */
+  React.useEffect(() => {
+    if (doc === null) return;
+    const wrap = scrollRef.current;
+    if (wrap === null) return;
+    const docId = doc.id;
+    let timer: number | undefined;
+    const record = (): void => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const box = scrollRef.current;
+        if (box === null) return;
+        saveView(docId, {
+          left: Math.round(box.scrollLeft),
+          top: Math.round(box.scrollTop),
+          zoom: zoomRef.current,
+        });
+      }, 500);
+    };
+    wrap.addEventListener("scroll", record, { passive: true });
+    // 缩放变化不触发 scroll，单独记一次
+    record();
+    return () => {
+      wrap.removeEventListener("scroll", record);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [doc?.id, zoom]);
 
   /** 当前缩放的引用（给只挂一次的 wheel 监听器读）。 */
   const zoomRef = React.useRef(zoom);
@@ -1468,10 +1526,20 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
     const wrap = scrollRef.current;
     if (wrap === null || layout === null) return;
     const rect = wrap.getBoundingClientRect();
-    const contentCenterX = (PAD + layout.width / 2) * zoom;
-    const contentCenterY = (PAD + layout.height / 2) * zoom;
-    wrap.scrollLeft = contentCenterX - rect.width / 2;
-    wrap.scrollTop = contentCenterY - rect.height / 2;
+    /*
+     * 居中到**根节点**而不是整张布局的包围盒中心。
+     *
+     * 布局可能很宽（十几个分支），包围盒中心常常落在两片内容之间的空白处，
+     * 用户点完还是什么都看不见。根节点是内容的起点，对准它才有意义。
+     */
+    const anchor =
+      layout.nodes.find((node) => node.depth === 0) ??
+      layout.nodes[0];
+    if (anchor === undefined) return;
+    const cx = (PAD + anchor.x + anchor.width / 2) * zoom;
+    const cy = (PAD + anchor.y + anchor.height / 2) * zoom;
+    wrap.scrollLeft = cx - rect.width / 2;
+    wrap.scrollTop = cy - rect.height / 2;
   }, [layout, zoom]);
 
   /** 加子节点（Tab / 按钮）。 */

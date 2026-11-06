@@ -2612,6 +2612,9 @@ def main() -> int:
             )
 
             # --- 居中按钮：内容拖到视野外还能找回来 ---
+            # 先复位缩放：居中的断言和缩放无关，留着上一段测试的 125%/300% 会干扰
+            page.click('[data-mm-action="zoom-reset"]')
+            page.wait_for_timeout(400)
             page.click('[data-mm-action="center"]')
             page.wait_for_timeout(900)
             centered_ok = page.evaluate("""() => {
@@ -4155,6 +4158,71 @@ def main() -> int:
                 if not any(r["key"] == key for r in results):
                     record(key, name, False, str(exc)[:200])
             pg.shot("04A-free-link-fail")
+
+        # ---------- 5B 记住视口位置 ----------
+        try:
+            pg.reset_workspace("视口记忆导图")
+            page.wait_for_timeout(1200)
+
+            def view():
+                return page.evaluate("""() => {
+                    const w = document.querySelector('.mm-canvas-wrap');
+                    return {left: Math.round(w.scrollLeft), top: Math.round(w.scrollTop),
+                            zoom: document.querySelector('[data-mm-action="zoom-reset"]').textContent.trim()};
+                }""")
+
+            # 挪到一个明确的位置 + 缩放
+            page.evaluate("""() => {
+                const w = document.querySelector('.mm-canvas-wrap');
+                w.scrollLeft = 1200; w.scrollTop = 900;
+            }""")
+            page.wait_for_timeout(300)
+            page.evaluate("() => document.querySelector('.mm-canvas').focus()")
+            page.keyboard.press("Control+=")
+            page.wait_for_timeout(700)
+            moved = view()
+            # 等防抖写入 localStorage
+            page.wait_for_timeout(900)
+
+            # 回列表再打开同一份文档
+            page.evaluate("() => window.__mindmap.back()")
+            page.wait_for_timeout(1200)
+            page.evaluate("""() => {
+                const st = window.__mindmap.state();
+                const target = st.docs.find(d => d.title === '视口记忆导图');
+                window.__mindmap.open(target.id);
+            }""")
+            page.wait_for_timeout(2000)
+            restored = view()
+            record(
+                "5B0",
+                "重新打开导图会回到上次的视口位置和缩放",
+                restored["left"] == moved["left"]
+                and restored["top"] == moved["top"]
+                and restored["zoom"] == moved["zoom"],
+                f"{json.dumps(moved)} → {json.dumps(restored)}",
+            )
+
+            # 换一份文档不应该串用别的文档的视口
+            page.evaluate("() => window.__mindmap.back()")
+            page.wait_for_timeout(800)
+            other = page.evaluate("""() => {
+                const st = window.__mindmap.state();
+                const t = st.docs.find(d => d.title === '视口记忆导图');
+                return t ? t.id : null;
+            }""")
+            record("5B1", "视口记录按文档区分（存在 localStorage 里）",
+                   page.evaluate("""(id) => !!window.localStorage.getItem('dsh-mindmap:view:' + id)""", other))
+
+            pg.shot("04B-view")
+        except Exception as exc:
+            for key, name in [
+                ("5B0", "重新打开导图会回到上次的视口位置和缩放"),
+                ("5B1", "视口记录按文档区分（存在 localStorage 里）"),
+            ]:
+                if not any(r["key"] == key for r in results):
+                    record(key, name, False, str(exc)[:200])
+            pg.shot("04B-view-fail")
 
         # ---------- 6 保存 + 刷新后仍在 ----------
         try:
