@@ -292,6 +292,54 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
     [store, focusCanvas, scrollNodeIntoView],
   );
 
+  /** 搜索框是否打开 / 当前关键词。 */
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  /** 当前停在第几个匹配（Enter 循环）。 */
+  const [matchIndex, setMatchIndex] = React.useState(0);
+
+  /**
+   * 匹配到的节点 id（按文档顺序）。
+   *
+   * 只搜正文，不搜备注：备注不进画布显示，搜到了也看不见，
+   * 用户会以为定位失败。
+   */
+  const matchIds = React.useMemo(() => {
+    if (doc === null) return [];
+    const needle = searchQuery.trim().toLowerCase();
+    if (needle.length === 0) return [];
+    const hits: string[] = [];
+    const walk = (node: MindNode): void => {
+      if (node.text.toLowerCase().includes(needle)) hits.push(node.id);
+      for (const child of node.children) walk(child);
+    };
+    walk(doc.root);
+    return hits;
+  }, [doc, searchQuery]);
+
+  /** 跳到第 index 个匹配：选中 + 滚进视野。 */
+  const gotoMatch = React.useCallback(
+    (index: number) => {
+      if (matchIds.length === 0) return;
+      const wrapped = ((index % matchIds.length) + matchIds.length) % matchIds.length;
+      setMatchIndex(wrapped);
+      const id = matchIds[wrapped]!;
+      store.select(id);
+      // 等选中生效、节点渲染出来再滚
+      requestAnimationFrame(() => scrollNodeIntoView(id, 80));
+    },
+    [matchIds, store, scrollNodeIntoView],
+  );
+
+  /** 关键词变化时自动跳到第一个匹配。 */
+  React.useEffect(() => {
+    if (!searchOpen) return;
+    setMatchIndex(0);
+    if (matchIds.length > 0) gotoMatch(0);
+    // gotoMatch 依赖 matchIds，这里只跟着关键词走
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, searchOpen]);
+
   /**
    * 缩放，锚在给定屏幕点（默认视口中心）。
    */
@@ -1592,6 +1640,18 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
       // 让输入框（标题栏等）里的按键不被画布截走
       if (target !== event.currentTarget && target.tagName === "INPUT") return;
 
+      // Cmd/Ctrl + F：打开搜索并聚焦输入框
+      if ((event.metaKey || event.ctrlKey) && (event.key === "f" || event.key === "F")) {
+        event.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => {
+          const input = document.querySelector<HTMLInputElement>("[data-mm-search-input]");
+          input?.focus();
+          input?.select();
+        });
+        return;
+      }
+
       /*
        * 缩放快捷键：Cmd/Ctrl + = / − / 0。
        *
@@ -1799,6 +1859,71 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
           tabIndex={-1}
         />
         <div className="mm-grow" />
+        {/*
+         * 搜索：按正文快速定位节点。
+         * Cmd/Ctrl+F 打开，Enter / Shift+Enter 在匹配之间跳。
+         */}
+        {searchOpen ? (
+          <div className="mm-search" data-mm-search="true">
+            <input
+              className="mm-search-input"
+              data-mm-search-input="true"
+              value={searchQuery}
+              autoFocus
+              aria-label="搜索节点"
+              placeholder="搜索节点内容（Enter 下一个，Esc 关闭）"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  gotoMatch(matchIndex + (event.shiftKey ? -1 : 1));
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                  focusCanvas();
+                }
+              }}
+            />
+            <span className="mm-search-count" data-mm-search-count="true">
+              {matchIds.length === 0
+                ? searchQuery.trim().length === 0
+                  ? ""
+                  : "无匹配"
+                : String(matchIndex + 1) + "/" + String(matchIds.length)}
+            </span>
+            <button
+              type="button"
+              className="mm-btn"
+              data-icon="true"
+              data-mm-action="search-close"
+              onClick={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+                focusCanvas();
+              }}
+              title="关闭搜索"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mm-btn"
+            data-mm-action="search"
+            onClick={() => {
+              setSearchOpen(true);
+              requestAnimationFrame(() => {
+                document.querySelector<HTMLInputElement>("[data-mm-search-input]")?.focus();
+              });
+            }}
+            title="搜索节点内容（Cmd/Ctrl+F）"
+          >
+            搜索
+          </button>
+        )}
         {/*
          * 撤销 / 重做。
          *
@@ -2366,6 +2491,10 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
               data-dragging={preview !== null ? "true" : undefined}
               data-multi={selectedIds.length > 1 && isSelected ? "true" : undefined}
               data-styled={nodeStyle !== undefined ? "true" : undefined}
+              data-match={matchIds.includes(node.id) ? "true" : undefined}
+              data-match-current={
+                matchIds.length > 0 && matchIds[matchIndex] === node.id ? "true" : undefined
+              }
               style={{
                 left: nodeX,
                 top: nodeY,

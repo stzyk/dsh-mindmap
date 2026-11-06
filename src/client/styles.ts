@@ -1990,4 +1990,44 @@ img.mm-node-img { cursor: zoom-in; }
  * （实际反馈就是这样）。显式给 ::-webkit-scrollbar 写样式后，
  * Chrome / Safari 会改成常驻显示；Firefox 用 scrollbar-width/color。
  */
+
+/* ── 搜索 ─────────────────────────────────────────────── */
+.mm-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 8px;
+  height: 30px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12));
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-base, #fff);
+}
+.mm-search-input {
+  width: 190px;
+  height: 24px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  font: inherit;
+  font-size: 12.5px;
+}
+.mm-search-count {
+  min-width: 34px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-tertiary, #8a8a8a);
+}
+/*
+ * 匹配高亮。
+ *
+ * 用 box-shadow 而不是 border：border 会改变盒子尺寸，把布局挤动一格。
+ */
+.mm-node[data-match="true"] {
+  box-shadow: 0 0 0 2px rgba(74, 125, 255, .45);
+}
+.mm-node[data-match-current="true"] {
+  box-shadow: 0 0 0 3px var(--dsw-alias-state-business-primary, #4a7dff);
+}
+
 `;

@@ -4224,6 +4224,95 @@ def main() -> int:
                     record(key, name, False, str(exc)[:200])
             pg.shot("04B-view-fail")
 
+        # ---------- 5C 内容搜索定位 ----------
+        try:
+            pg.reset_workspace("搜索定位导图")
+            page.wait_for_timeout(1200)
+            page.evaluate("""() => {
+                const st = window.__mindmap.state();
+                for (let i = 1; i <= 20; i++) {
+                    st.doc.root.children.push({
+                        id: 'sc' + i,
+                        text: (i % 4 === 0 ? '硬脂酸锌' : '普通节点') + i,
+                        children: [],
+                    });
+                }
+                window.__mindmap.mutate(st.doc.root);
+            }""")
+            page.wait_for_timeout(1200)
+
+            # Cmd/Ctrl+F 打开搜索框
+            page.evaluate("() => document.querySelector('.mm-canvas').focus()")
+            page.keyboard.press("Control+f")
+            page.wait_for_timeout(600)
+            record("5C0", "Ctrl/Cmd+F 打开搜索框", page.locator('[data-mm-search-input]').count() == 1)
+
+            page.fill('[data-mm-search-input]', '硬脂酸锌')
+            page.wait_for_timeout(900)
+            count_text = page.locator('[data-mm-search-count]').inner_text()
+            highlighted = page.locator('.mm-node[data-match="true"]').count()
+            record(
+                "5C1",
+                "搜索会高亮所有匹配节点并显示计数",
+                count_text == "1/5" and highlighted == 5,
+                f"计数={count_text} 高亮={highlighted}",
+            )
+
+            selected = page.evaluate("() => window.__mindmap.state().selectedId")
+            record(
+                "5C2",
+                "搜索自动跳到第一个匹配并选中它",
+                selected is not None
+                and page.locator('.mm-node[data-match-current="true"]').count() == 1,
+            )
+
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(700)
+            second = page.locator('[data-mm-search-count]').inner_text()
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(700)
+            third = page.locator('[data-mm-search-count]').inner_text()
+            record(
+                "5C3",
+                "Enter 在匹配之间循环跳转",
+                second == "2/5" and third == "3/5",
+                f"{count_text} → {second} → {third}",
+            )
+
+            page.fill('[data-mm-search-input]', '这个词一定不存在')
+            page.wait_for_timeout(700)
+            record(
+                "5C4",
+                "没有匹配时明确提示「无匹配」且不高亮",
+                page.locator('[data-mm-search-count]').inner_text() == "无匹配"
+                and page.locator('.mm-node[data-match="true"]').count() == 0,
+            )
+
+            page.fill('[data-mm-search-input]', '硬脂酸锌')
+            page.wait_for_timeout(600)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(600)
+            record(
+                "5C5",
+                "Esc 关闭搜索并清掉高亮",
+                page.locator('[data-mm-search-input]').count() == 0
+                and page.locator('.mm-node[data-match="true"]').count() == 0,
+            )
+
+            pg.shot("04C-search")
+        except Exception as exc:
+            for key, name in [
+                ("5C0", "Ctrl/Cmd+F 打开搜索框"),
+                ("5C1", "搜索会高亮所有匹配节点并显示计数"),
+                ("5C2", "搜索自动跳到第一个匹配并选中它"),
+                ("5C3", "Enter 在匹配之间循环跳转"),
+                ("5C4", "没有匹配时明确提示「无匹配」且不高亮"),
+                ("5C5", "Esc 关闭搜索并清掉高亮"),
+            ]:
+                if not any(r["key"] == key for r in results):
+                    record(key, name, False, str(exc)[:200])
+            pg.shot("04C-search-fail")
+
         # ---------- 6 保存 + 刷新后仍在 ----------
         try:
             page.evaluate("window.__mindmap.flush()")
