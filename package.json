@@ -1,0 +1,57 @@
+{
+  "name": "dsh-mindmap",
+  "version": "0.17.1",
+  "description": "DeepSeek Harness 插件：思维导图 —— 多主题、节点标识、连线改接/删除、自由关系线、大画布导航（滚动条 + 虚拟留白 + 平移居中）、节点配图、自动保存、Markdown 双向编辑。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "bundle": "node scripts/build.mjs",
+    "gates": "node scripts/gates/run.mjs",
+    "test": "node --test scripts/test-core.mjs scripts/test-store.mjs scripts/test-history.mjs scripts/test-parse.mjs scripts/test-style.mjs",
+    "test:core": "node --test scripts/test-core.mjs",
+    "test:store": "node --test scripts/test-store.mjs",
+    "test:history": "node --test scripts/test-history.mjs",
+    "test:parse": "node --test scripts/test-parse.mjs",
+    "test:style": "node --test scripts/test-style.mjs"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "mindmap",
+    "markdown",
+    "outline"
+  ],
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  }
+}

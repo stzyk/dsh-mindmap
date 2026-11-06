@@ -1,0 +1,7 @@
+node_modules/
+lib/
+verify/screenshots/
+verify/*.log
+verify/*.pid
+*.log
+.DS_Store

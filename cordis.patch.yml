@@ -1,0 +1,5 @@
+# dsh-mindmap bundle patch: 把本插件插入 profile 的 bundle 层。
+# insert 的 id/name 必须等于包名（与 client ModuleLoader id 三者一致）。
+- insert:
+    - id: dsh-mindmap
+      name: dsh-mindmap
