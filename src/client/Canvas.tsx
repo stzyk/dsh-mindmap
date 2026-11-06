@@ -1154,7 +1154,13 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
        * 多个节点：用**增量**平移整组——这样它们之间的相对位置不变，
        * 而不是全部叠到同一个坐标上。
        */
-      if (drag.ids.length === 1) {
+      /*
+     * 拖动结束后按视觉上下顺序重排兄弟：用户摆出来的顺序就是他要的顺序，
+     * 自动排版应该照着来，而不是照着"输入时的先后"。
+     */
+    store.sortByPosition();
+
+    if (drag.ids.length === 1) {
         const layoutNode = layout?.nodes.find((node) => node.id === drag.id);
         if (layoutNode === undefined) return;
         const moved = setPosition(

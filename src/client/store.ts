@@ -31,6 +31,7 @@ import {
   detachToTheme,
   disconnectNode,
   setNodeKind,
+  sortSiblingsByPosition,
   duplicateNodes,
   repointEdge,
   locate,
@@ -888,6 +889,14 @@ export function createStore(): MindmapStore {
       mutateTree(next);
       toast("已断开连线（节点还在原位）");
       return true;
+    },
+
+    sortByPosition() {
+      if (state.doc === null) return;
+      const next = sortSiblingsByPosition(state.doc.root);
+      // 顺序没变就不产生撤销步（拖动常常只是挪个位置）
+      if (next === undefined) return;
+      mutateTree(next);
     },
 
     setNodeKind(id, kind, position) {

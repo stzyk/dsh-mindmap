@@ -1435,3 +1435,40 @@ export function isThemeNode(node: MindNode, depth: number): boolean {
   if (node.kind !== undefined) return node.kind === "theme";
   return depth === 0;
 }
+
+/**
+ * 按节点的实际上下位置重排兄弟顺序。
+ *
+ * 用户拖过节点之后，看到的上下顺序就是他心里的顺序；
+ * 但树里的 children 数组还是"输入时的先后"。自动排版照数组来，
+ * 于是排出来和用户摆的对不上——用户会觉得"排版把我的顺序打乱了"。
+ *
+ * 所以拖动结束后按 y 重排一次：**逻辑顺序跟上视觉顺序**。
+ * 只在同一个父级的子节点之间重排，不跨层级、不改变父子关系。
+ *
+ * @returns 新树；没有节点需要换位时返回 undefined（避免产生无意义的撤销步）。
+ */
+export function sortSiblingsByPosition(root: MindNode): MindNode | undefined {
+  const next = cloneNode(root);
+  let changed = false;
+  const walk = (node: MindNode): void => {
+    if (node.children.length > 1) {
+      const order = node.children.map((child, index) => ({ child, index }));
+      const sorted = [...order].sort((a, b) => {
+        const ay = a.child.position?.y ?? Number.POSITIVE_INFINITY;
+        const by = b.child.position?.y ?? Number.POSITIVE_INFINITY;
+        // 没有手动位置的保持原相对次序，避免把自动节点搅乱
+        if (ay === by) return a.index - b.index;
+        return ay - by;
+      });
+      const reordered = sorted.map((item) => item.child);
+      if (reordered.some((child, index) => child !== node.children[index])) {
+        node.children = reordered;
+        changed = true;
+      }
+    }
+    for (const child of node.children) walk(child);
+  };
+  walk(next);
+  return changed ? next : undefined;
+}

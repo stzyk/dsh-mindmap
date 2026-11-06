@@ -49,6 +49,7 @@ import {
   disconnectNode,
   setNodeKind,
   isThemeNode,
+  sortSiblingsByPosition,
 } from "../src/core/tree.ts";
 import { MAX_MARKS } from "../src/core/marks.ts";
 import { toMarkdown, toMarkdownForest, toOutline, safeFileName } from "../src/core/markdown.ts";
@@ -1772,4 +1773,71 @@ test("种类：主题降成子节点（变成游离，但不丢）", () => {
   assert.equal(t1.kind, "node");
   assert.equal(t1.detached, true, "顶层节点没有父级连线，降级后表现为游离");
   assert.deepEqual(t1.position, { x: 40, y: 60 });
+});
+
+/* ------------------------------------------------------------------ *
+ * 自动排版：避让重叠 + 按用户顺序
+ * ------------------------------------------------------------------ */
+
+test("排版避让：两个手动节点叠在一起会被推开", () => {
+  const root = {
+    id: "r",
+    text: "根",
+    children: [
+      { id: "a", text: "AAA", position: { x: 200, y: 100 }, children: [] },
+      { id: "b", text: "BBB", position: { x: 200, y: 110 }, children: [] },
+    ],
+  };
+  const layout = layoutTree(root);
+  const a = layout.nodes.find((n) => n.id === "a");
+  const b = layout.nodes.find((n) => n.id === "b");
+  assert.ok(b.y >= a.y + a.height, "下面的节点被推到不重叠");
+});
+
+test("排版避让：推开时整棵子树跟着走", () => {
+  const root = {
+    id: "r",
+    text: "根",
+    children: [
+      { id: "a", text: "AAA", position: { x: 200, y: 100 }, children: [] },
+      {
+        id: "b",
+        text: "BBB",
+        position: { x: 200, y: 110 },
+        children: [{ id: "b1", text: "B1", position: { x: 400, y: 110 }, children: [] }],
+      },
+    ],
+  };
+  const layout = layoutTree(root);
+  const b = layout.nodes.find((n) => n.id === "b");
+  const b1 = layout.nodes.find((n) => n.id === "b1");
+  assert.equal(b1.y - b.y, 0, "子节点和父节点保持相对位置");
+});
+
+test("排版顺序：按节点的上下位置重排兄弟，而不是输入顺序", () => {
+  const root = {
+    id: "r",
+    text: "根",
+    children: [
+      { id: "a", text: "A", position: { x: 0, y: 300 }, children: [] },
+      { id: "b", text: "B", position: { x: 0, y: 100 }, children: [] },
+      { id: "c", text: "C", position: { x: 0, y: 200 }, children: [] },
+    ],
+  };
+  const next = sortSiblingsByPosition(root);
+  assert.ok(next);
+  assert.deepEqual(next.children.map((c) => c.id), ["b", "c", "a"]);
+  assert.deepEqual(root.children.map((c) => c.id), ["a", "b", "c"], "不改原树");
+});
+
+test("排版顺序：顺序没变时不产生新树（不制造无意义撤销步）", () => {
+  const root = {
+    id: "r",
+    text: "根",
+    children: [
+      { id: "a", text: "A", position: { x: 0, y: 100 }, children: [] },
+      { id: "b", text: "B", position: { x: 0, y: 200 }, children: [] },
+    ],
+  };
+  assert.equal(sortSiblingsByPosition(root), undefined);
 });

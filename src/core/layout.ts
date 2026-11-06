@@ -268,6 +268,61 @@ export function nodeWidth(text: string, depth = 1, measure?: TextMeasurer): numb
  * @param options - 覆盖默认常量（UI 缩放时用）。
  * @returns 布局结果，坐标原点在画布左上角（margin 之后）。
  */
+/**
+ * 碰撞消解：把重叠的节点推开。
+ *
+ * 为什么需要它：手动摆放过（拖过）的节点用自己的坐标，自动排布管不到它们，
+ * 于是会出现"两个节点叠在一起"——实测一张 200 节点的图里能叠出五六处，
+ * 文字互相盖住，既看不清也点不中。
+ *
+ * 策略：按 y 从上往下扫，发现重叠就把**下面那个**（连同它的整棵子树）
+ * 往下推，推到刚好不重叠为止。只推手动节点——自动节点本来就由排布保证不重叠，
+ * 推它们会破坏树的层级感。
+ *
+ * 迭代 4 轮：推开一个可能又撞上更下面的，扫几遍才收敛。
+ * 不做无限循环——真遇到极端布局（用户把节点拖成环），宁可留一点重叠也不能卡死。
+ */
+function resolveOverlaps(nodes: LayoutNode[], parents: Map<string, string>, gapY: number): void {
+  const descendantsOf = (id: string): LayoutNode[] => {
+    const out: LayoutNode[] = [];
+    const stack = [id];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      for (const node of nodes) {
+        if (parents.get(node.id) === current) {
+          out.push(node);
+          stack.push(node.id);
+        }
+      }
+    }
+    return out;
+  };
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    let moved = false;
+    // 从上往下扫，保证"上面的先定位，下面的再让"
+    const ordered = [...nodes].sort((a, b) => a.y - b.y);
+    for (let i = 0; i < ordered.length; i += 1) {
+      const above = ordered[i]!;
+      for (let j = i + 1; j < ordered.length; j += 1) {
+        const below = ordered[j]!;
+        // 水平不相交就不算撞（左右两列各排各的）
+        const horizontallyOverlapping =
+          above.x < below.x + below.width && below.x < above.x + above.width;
+        if (!horizontallyOverlapping) continue;
+        const overlapY = above.y + above.height + gapY - below.y;
+        if (overlapY <= 0) continue;
+        // 只推手动节点：自动节点由排布保证，推它会破坏层级
+        if (below.manual !== true) continue;
+        below.y += overlapY;
+        for (const child of descendantsOf(below.id)) child.y += overlapY;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+}
+
 export function layoutTree(
   root: MindNode,
   options: {
@@ -467,6 +522,9 @@ export function layoutTree(
   }
 
   // 画布宽高：从实际节点反推，保证所有方框都在界内
+  // 排完之后消解手动节点之间的重叠
+  resolveOverlaps(nodes, parents, gapY);
+
   let maxRight = 0;
   let maxBottom = 0;
   for (const node of nodes) {
