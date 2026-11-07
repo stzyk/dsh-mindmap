@@ -165,15 +165,19 @@ export const CSS = `
   flex: 1;
   min-width: 0;
   /*
-   * 必须是 flex 列：里面有工具栏 + 画布两部分，
+   * 必须是 flex 列：里面有画布自带的缩放条 + 画布两部分，
    * 不声明的话画布拿不到约束高度，会撑出容器底部 43px（被裁掉）。
    */
   display: flex;
   flex-direction: column;
   min-height: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  /*
+   * 属性抽屉（浮层）的定位基准。
+   *
+   * 抽屉挂在画布区里而不是 .mm-split 上：Markdown 栏开着时，
+   * 挂在 .mm-split 上会连 Markdown 一起盖住（连它的收起按钮都点不到）。
+   */
+  position: relative;
 }
 .mm-split-side {
   flex: none;

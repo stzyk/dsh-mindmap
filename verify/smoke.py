@@ -4027,11 +4027,13 @@ def main() -> int:
             detached = node_of("yy-a")
             record(
                 "5y5",
-                "删除连线后节点仍是子节点（层级不变，不会变成主题）",
-                # v0.18.0：断边只去掉那条线，节点留在原父级下
+                "删除连线后节点升到第 1 级（v0.30.0 的规则，不再留在原父级）",
+                # v0.30.0 用户规则：断开连线 = 这个节点不再属于任何上级，
+                # 所以它升成 1 级（多主题里的一个主题），内容不丢。
                 detached is not None
-                and detached["parent"] == "连线操作测试导图"
-                and after["multi"] is False,
+                and detached["parent"] == ""
+                and detached["d"] == 1
+                and after["multi"] is True,
                 json.dumps(detached, ensure_ascii=False),
             )
             record(
@@ -4315,12 +4317,12 @@ def main() -> int:
                 if (!el) return null;
                 return {x: Math.round(parseFloat(el.style.left)), y: Math.round(parseFloat(el.style.top))};
             }""")
+            # v0.30.0 起断开连线 = 升到第 1 级（变成主题），主题走自动排版，
+            # 所以坐标会变；这里要保证的是**节点还在、内容没丢**。
             record(
                 "5A8",
-                "删除连线后节点原地不动（不会跳到别处）",
-                after_pos is not None
-                and abs(after_pos["x"] - before_pos["x"]) <= 2
-                and abs(after_pos["y"] - before_pos["y"]) <= 2,
+                "删除连线后节点还在（升为 1 级主题，内容不丢）",
+                after_pos is not None,
                 f"{json.dumps(before_pos)} → {json.dumps(after_pos)}",
             )
 
