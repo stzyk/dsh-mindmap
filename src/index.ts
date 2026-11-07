@@ -16,6 +16,15 @@
  */
 
 import { toMarkdown, type MarkdownMode } from "./core/markdown.ts";
+import {
+  applyOps,
+  countOf,
+  outlineOf,
+  resolveDoc,
+  treeFromMarkdown,
+  type MindOp,
+  type ToolStore,
+} from "./tools.ts";
 import { MAX_DOCS, openStore, storageFile, type MindStore } from "./store.ts";
 import { openAssetStore, type AssetStore } from "./assets.ts";
 import { collectImages, countImages, MAX_IMAGES_PER_DOC } from "./core/tree.ts";
@@ -39,7 +48,11 @@ export { storageFile, MAX_DOCS };
  * 提供在插件树的兄弟分支上，嵌套作用域解析不到它，实测必抛
  * "cannot get property webServer without inject"，路由根本不注册。
  */
-export const inject = ["connection", "webServer", "commands"];
+/*
+ * tools：注册模型可调用的工具（读/生成/修改导图）。
+ * 缺了它工具注册不了，但插件其余功能不受影响。
+ */
+export const inject = ["connection", "webServer", "commands", "tools"];
 
 /** webServer 收到的请求（结构化最小类型，避免依赖平台包类型）。 */
 interface IncomingLike {
@@ -72,6 +85,14 @@ interface HostServices {
     requestRejection?(request: IncomingLike): number | undefined;
   };
   webServer?: WebServerLike;
+  tools?: {
+    register(definition: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      execute(args: Record<string, unknown>, exec: unknown): Promise<unknown>;
+    }): unknown;
+  };
   commands?: {
     register(definition: {
       name: string;
@@ -130,6 +151,13 @@ export function methodOf(url: string | undefined, prefix: string): string {
 /** 注册 Host 半区。 */
 export function apply(ctx: HostServices): void {
   const logger = safeLogger(ctx);
+  /*
+   * 实际注册成功的工具名。
+   *
+   * 挂到 ping 的返回值里对外可见：cordis 的 logger 在无头实例中看不到输出，
+   * "注册失败被 catch 住"就完全静默了。有个可查询的出口，验收时能直接确认。
+   */
+  const registeredTools: string[] = [];
 
   ctx.effect(() => {
     let disposed = false;
@@ -183,7 +211,13 @@ export function apply(ctx: HostServices): void {
       async ping() {
         const store = await need();
         if (store === undefined) return fail("disposed", "插件已卸载");
-        return ok({ name: "dsh-mindmap", time: Date.now(), file: store.file(), count: store.list().length });
+        return ok({
+          name: "dsh-mindmap",
+          time: Date.now(),
+          file: store.file(),
+          count: store.list().length,
+          tools: registeredTools,
+        });
       },
 
       async "docs.list"() {
@@ -457,6 +491,178 @@ export function apply(ctx: HostServices): void {
       );
       logger.info("导图存储通道已注册：" + CHANNEL);
     });
+
+    // ---- 模型工具（独立于 commands：commands 缺失时工具照样要能注册）----
+      /*
+       * 注册模型工具：让对话能直接读写导图。
+       *
+       * 四个工具覆盖三类需求：
+       *   list/read  —— 看（AI 必须拿到节点 id 才能精确修改）
+       *   create     —— 生成（接受 Markdown 大纲）
+       *   update     —— 改（增量操作，能只撤销这一步）
+       */
+      /*
+       * 注意：cordis 里**访问未注入的服务会直接抛错**，不是返回 undefined。
+       * 不包 try 的话整个 effect 会在这里中断，后面的代码（包括命令注册）
+       * 全都不会执行——现象是"工具没注册，其它也静默失效"。
+       */
+      let toolService: { register: (def: unknown) => unknown } | undefined;
+      try {
+        toolService = (ctx as unknown as { tools?: { register: (def: unknown) => unknown } }).tools;
+      } catch (error) {
+        logger.warn("tools 服务不可用：", error);
+      }
+      if (toolService !== undefined && typeof toolService.register === "function") {
+        const toolStore = async (): Promise<ToolStore | undefined> => {
+          const opened = await need();
+          if (opened === undefined) return undefined;
+          return opened as unknown as ToolStore;
+        };
+
+        const docParam = {
+          type: "string",
+          description: "导图 id；不给就配合 title 按标题查找",
+        };
+        const titleParam = {
+          type: "string",
+          description: "导图标题（模糊匹配）；和 id 二选一",
+        };
+
+        const register = (
+          name: string,
+          description: string,
+          parameters: Record<string, unknown>,
+          run: (args: Record<string, unknown>) => Promise<string>,
+        ): void => {
+          try {
+            toolService!.register({
+              name,
+              description,
+              parameters,
+              /*
+               * 输出契约是**必填**的（缺了注册会抛
+               * `tool "x" must declare output { schema, render, ... }`）。
+               * 四个工具都返回纯文本，所以 schema 统一是 string，
+               * render 把它包成一个 text block。
+               */
+              output: {
+                schema: { type: "string" },
+                render: (_args: unknown, value: unknown) => [
+                  { type: "text", text: String(value) },
+                ],
+              },
+              async execute(args: Record<string, unknown>) {
+                return run(args);
+              },
+            });
+            registeredTools.push(name);
+          } catch (error) {
+            logger.warn("工具注册失败 " + name + "：", error);
+          }
+        };
+
+        register(
+          "mindmap_list",
+          "列出所有思维导图（id / 标题 / 节点数 / 更新时间）。当用户提到「导图」但没有指明哪一份时，先调用它。",
+          {},
+          async () => {
+            const store = await toolStore();
+            if (store === undefined) return "插件已卸载";
+            const docs = store.list();
+            if (docs.length === 0) return "还没有任何导图。";
+            return docs
+              .map((doc) => "- " + doc.title + "  [" + doc.id + "]  " + String(doc.nodes) + " 节点")
+              .join("\n");
+          },
+        );
+
+        register(
+          "mindmap_read",
+          "读取一份思维导图的结构（缩进文本，每行末尾方括号里是节点 id）。修改前必须先读，否则拿不到节点 id。",
+          { id: docParam, title: titleParam },
+          async (args) => {
+            const store = await toolStore();
+            if (store === undefined) return "插件已卸载";
+            const found = resolveDoc(
+              store,
+              typeof args.id === "string" ? args.id : undefined,
+              typeof args.title === "string" ? args.title : undefined,
+            );
+            if (found === undefined) return "找不到这份导图。先调用 mindmap_list 看看有哪些。";
+            const doc = store.get(found.id);
+            if (doc === undefined) return "找不到这份导图。";
+            return "# " + doc.title + "\n\n" + outlineOf(doc.root);
+          },
+        );
+
+        register(
+          "mindmap_create",
+          "用 Markdown 大纲生成一张新的思维导图（不覆盖已有导图）。标题行用 #，层级用 ## / ### 或缩进列表。",
+          {
+            title: { type: "string", required: true, description: "新导图的标题" },
+            markdown: { type: "string", required: true, description: "Markdown 大纲正文" },
+          },
+          async (args) => {
+            const store = await toolStore();
+            if (store === undefined) return "插件已卸载";
+            const title = String(args.title ?? "").trim() || "未命名导图";
+            const markdown = String(args.markdown ?? "");
+            const root = treeFromMarkdown(markdown, title);
+            const created = await store.create(title, title);
+            const doc = store.get(created.id);
+            if (doc === undefined) return "创建失败";
+            await store.save({ ...doc, root: { ...root, id: doc.root.id } });
+            return "已生成「" + title + "」，" + String(countOf(root)) + " 个节点。";
+          },
+        );
+
+        register(
+          "mindmap_update",
+          "增量修改一份思维导图。先 mindmap_read 拿节点 id，再用 ops 描述改动。",
+          {
+            id: docParam,
+            title: titleParam,
+            ops: {
+              type: "array",
+              required: true,
+              description: "按顺序执行的操作",
+              items: {
+                type: "object",
+                additionalProperties: true,
+                properties: {
+                  op: {
+                    type: "string",
+                    required: true,
+                    description: "add（加子节点）/ update（改文字）/ remove（删节点）/ move（上下挪）",
+                  },
+                  id: { type: "string", description: "目标节点 id；add 时是父节点" },
+                  text: { type: "string", description: "add / update 的文字" },
+                  direction: { type: "string", description: "move 的方向：up / down" },
+                },
+              },
+            },
+          },
+          async (args) => {
+            const store = await toolStore();
+            if (store === undefined) return "插件已卸载";
+            const found = resolveDoc(
+              store,
+              typeof args.id === "string" ? args.id : undefined,
+              typeof args.title === "string" ? args.title : undefined,
+            );
+            if (found === undefined) return "找不到这份导图。先调用 mindmap_list。";
+            const doc = store.get(found.id);
+            if (doc === undefined) return "找不到这份导图。";
+            const ops = Array.isArray(args.ops) ? (args.ops as MindOp[]) : [];
+            if (ops.length === 0) return "ops 是空的，没有要改的东西。";
+            const result = applyOps(doc.root, ops);
+            if ("error" in result) return "修改失败：" + result.error;
+            await store.save({ ...doc, root: result.root });
+            return "已应用 " + String(result.applied) + " 个操作。当前结构：\n\n" + outlineOf(result.root);
+          },
+        );
+      }
+
 
     // ---- 命令 ----
     if (ctx.commands !== undefined && typeof ctx.commands.register === "function") {

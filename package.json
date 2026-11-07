@@ -1,6 +1,6 @@
 {
   "name": "dsh-mindmap",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "DeepSeek Harness 插件：思维导图 —— 多主题、节点标识、连线改接/删除、自由关系线、大画布导航（滚动条 + 虚拟留白 + 平移居中）、节点配图、自动保存、Markdown 双向编辑。",
   "type": "module",
   "main": "lib/index.js",
