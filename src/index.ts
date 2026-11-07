@@ -149,8 +149,20 @@ export function methodOf(url: string | undefined, prefix: string): string {
 }
 
 /** 注册 Host 半区。 */
-export function apply(ctx: HostServices): void {
+/**
+ * 插件配置。
+ *
+ * `tools` 默认 **关闭**：模型工具一旦有 schema 问题，会让整个会话 400
+ * （上游报 "API 调用参数有误"），用户连普通对话都用不了。
+ * 等工具稳定后再考虑默认打开。
+ */
+export interface MindmapConfig {
+  tools?: boolean;
+}
+
+export function apply(ctx: HostServices, config?: MindmapConfig): void {
   const logger = safeLogger(ctx);
+  const toolsEnabled = config?.tools === true;
   /*
    * 实际注册成功的工具名。
    *
@@ -492,7 +504,10 @@ export function apply(ctx: HostServices): void {
       logger.info("导图存储通道已注册：" + CHANNEL);
     });
 
-    // ---- 模型工具（独立于 commands：commands 缺失时工具照样要能注册）----
+    // ---- 模型工具（默认关闭，见 MindmapConfig.tools）----
+    if (!toolsEnabled) {
+      logger.info("模型工具未启用（配置 tools: true 可打开）");
+    } else {
       /*
        * 注册模型工具：让对话能直接读写导图。
        *
@@ -673,7 +688,7 @@ export function apply(ctx: HostServices): void {
           },
         );
       }
-
+    }
 
     // ---- 命令 ----
     if (ctx.commands !== undefined && typeof ctx.commands.register === "function") {
