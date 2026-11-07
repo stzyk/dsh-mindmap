@@ -15,6 +15,11 @@
 
 import { normalizeStyle, type NodeStyle } from "./style.ts";
 import { normalizeMarks, toggleMarkIn } from "./marks.ts";
+/*
+ * 只为"按画布上下顺序插入"算一次布局。
+ * layout.ts 只以 `import type` 依赖本文件，运行期没有循环。
+ */
+import { layoutTree } from "./layout.ts";
 
 /** 一个思维导图节点。 */
 export interface MindNode {
@@ -1674,6 +1679,24 @@ export function attachByLink(
   if (host === undefined) return undefined;
   delete moved.node.kind;
   delete moved.node.detached;
+
+  /*
+   * 按**画布上的上下顺序**插进去，而不是一律追加到末尾。
+   *
+   * 用户看到的是纵向排开的一列，新挂进来的节点如果总跑到最下面，
+   * 和他眼里的位置就对不上（"我明明把它放到中间了"）。
+   * 先算一次原树的布局拿到各自的 y，再按 y 排序即可。
+   */
+  const before = layoutTree(root);
+  const yOf = new Map(before.nodes.map((node) => [node.id, node.y]));
   host.node.children.push(moved.node);
+  host.node.children.sort((a, b) => {
+    const ay = yOf.get(a.id);
+    const by = yOf.get(b.id);
+    // 没有坐标的（理论上不会发生）保持稳定，排在后面
+    if (ay === undefined) return by === undefined ? 0 : 1;
+    if (by === undefined) return -1;
+    return ay - by;
+  });
   return { root: next, childId, parentId };
 }

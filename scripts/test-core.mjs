@@ -1938,3 +1938,29 @@ test("连线自动挂靠：两端都已是普通节点时不动", () => {
   };
   assert.equal(attachByLink(root, "x", "a", true), undefined);
 });
+
+test("连线自动挂靠：按画布上下顺序插入，而不是一律追加到末尾", () => {
+  const root = {
+    id: "c",
+    text: "",
+    children: [
+      {
+        id: "a",
+        text: "A",
+        children: [
+          { id: "c1", text: "C1", position: { x: 200, y: 100 }, children: [] },
+          { id: "c3", text: "C3", position: { x: 200, y: 400 }, children: [] },
+        ],
+      },
+      // b 在画布上位于 c1 和 c3 之间
+      { id: "b", text: "B", position: { x: 0, y: 250 }, children: [] },
+    ],
+  };
+  const result = attachByLink(root, "a", "b", true);
+  assert.ok(result);
+  assert.deepEqual(
+    result.root.children[0].children.map((c) => c.id),
+    ["c1", "b", "c3"],
+    "b 插到 c1 和 c3 中间",
+  );
+});
