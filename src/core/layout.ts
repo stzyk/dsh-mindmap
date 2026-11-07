@@ -534,9 +534,6 @@ export function layoutTree(
   }
 
   // 画布宽高：从实际节点反推，保证所有方框都在界内
-  // 排完之后消解手动节点之间的重叠
-  resolveOverlaps(nodes, parents, gapY);
-
   let maxRight = 0;
   let maxBottom = 0;
   for (const node of nodes) {
