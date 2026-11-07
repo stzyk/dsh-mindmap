@@ -949,9 +949,16 @@ export function createStore(): MindmapStore {
         kind,
         state.doc.multiTheme === true,
         position,
+        // 层级由连线决定：有连线就挂到连线另一端，没有就是 1 级
+        state.doc.links ?? [],
       );
       if (result === undefined) {
-        toast("改不了这个节点的种类", "error");
+        toast(
+          kind === "node"
+            ? "它没有连到任何节点，按规则就是 1 级节点；先连一条线再切子节点"
+            : "改不了这个节点的种类",
+          "error",
+        );
         return;
       }
       history.push(result.root, id, result.multiTheme, state.doc.links ?? []);

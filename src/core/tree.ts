@@ -1446,6 +1446,7 @@ export function setNodeKind(
   kind: "theme" | "node",
   multiTheme: boolean,
   position?: { x: number; y: number },
+  links?: readonly MindLink[],
 ): { root: MindNode; multiTheme: boolean } | undefined {
   const source = locate(root, id);
   if (source === undefined) return undefined;
@@ -1484,15 +1485,14 @@ export function setNodeKind(
   }
 
   /*
-   * 降成普通子节点 = **真的挂到别人下面**，而不是只改一个标记。
+   * 降成普通子节点：**层级由连线决定**。
    *
-   * 原来这里只把 kind 改成 "node" 并把节点留在顶层，结果是：
-   * 结构上它还是主题（Markdown 照样输出 h1、排版照样按主题排），
-   * 面板却显示"子节点"——用户点了按钮发现什么都没变。
-   * 层级是结构决定的，改层级就必须改结构。
+   *   1. 这个节点已经连着别的节点 → 父级就是那个节点（层级 = 它 +1）；
+   *   2. 没有连线 → 它就是 1 级节点，保持顶层，不需要动。
    *
-   * 挂到哪儿：**上一个主题**下面（画布上就是它上面那个中心节点），
-   * 这是最符合直觉的选择；没有上一个就挂到下一个。
+   * 早期版本是"挂到上一个主题下面"，那只是个权宜之计：用户心里
+   * 节点之间的从属关系早就由连线表达出来了，硬塞给"上面那个"反而错。
+   * 而且层级是结构决定的，改层级必须真的改结构，只改标记没用。
    */
   const next = cloneNode(root);
   const target = locate(next, id);
@@ -1506,24 +1506,24 @@ export function setNodeKind(
     return { root: next, multiTheme };
   }
 
-  const siblings = target.parent.children;
-  const host =
-    siblings
-      .slice(0, target.index)
-      .reverse()
-      .find((node) => node.id !== id) ??
-    siblings.slice(target.index + 1).find((node) => node.id !== id);
-  if (host === undefined) {
-    // 只有一个主题，没有可挂靠的父级
+  // 找一条连着它的自由连线，用另一端当父级
+  const incoming = links?.find((link) => link.to === id);
+  const outgoing = links?.find((link) => link.from === id);
+  const parentId = incoming !== undefined ? incoming.from : outgoing !== undefined ? outgoing.to : undefined;
+  if (parentId === undefined) {
+    // 没有连线 = 1 级节点，保持顶层
     return undefined;
   }
+  // 防成环：父级不能在自己的子树里
+  if (pathTo(next, parentId).some((node) => node.id === id)) return undefined;
 
+  const siblings = target.parent.children;
   siblings.splice(target.index, 1);
   const node = target.node;
   delete node.kind;
   delete node.detached;
   if (position !== undefined) node.position = { x: position.x, y: position.y };
-  const hostNode = locate(next, host.id);
+  const hostNode = locate(next, parentId);
   if (hostNode === undefined) return undefined;
   hostNode.node.children.push(node);
   return { root: next, multiTheme };
