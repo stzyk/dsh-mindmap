@@ -34,6 +34,7 @@ import {
   sortSiblingsByPosition,
   setEdgeStyle,
   setLinkStyle,
+  attachByLink,
   duplicateNodes,
   repointEdge,
   locate,
@@ -1156,6 +1157,32 @@ export function createStore(): MindmapStore {
         toast("不能连到节点自己身上", "error");
         return false;
       }
+      /*
+       * 连线一建立就自动调整层级（用户规则）：
+       * 有一端还是 1 级节点，就把它挂到另一端下面。
+       * 挂靠成功后这条线**不再保留**——父子关系已经用树结构表达了，
+       * 再画一条自由连线就重复了。
+       */
+      const attached = attachByLink(state.doc.root, from, to, state.doc.multiTheme === true);
+      if (attached !== undefined) {
+        const moved = locate(attached.root, attached.childId);
+        const label = moved?.node.text ?? "";
+        history.push(attached.root, attached.childId, state.doc.multiTheme === true, state.doc.links ?? []);
+        set({
+          doc: {
+            ...state.doc,
+            root: attached.root,
+            updatedAt: Date.now(),
+          },
+          selectedId: attached.childId,
+          selectedIds: [attached.childId],
+        });
+        syncHistory();
+        scheduleSave();
+        toast("已把「" + label + "」挂到上级下面");
+        return true;
+      }
+
       const next = addLink(state.doc.links, from, to);
       if (next === undefined) {
         toast("这两个节点之间已经有一条连线了", "error");

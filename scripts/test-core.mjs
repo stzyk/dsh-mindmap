@@ -50,6 +50,7 @@ import {
   setNodeKind,
   isThemeNode,
   sortSiblingsByPosition,
+  attachByLink,
 } from "../src/core/tree.ts";
 import { MAX_MARKS } from "../src/core/marks.ts";
 import { toMarkdown, toMarkdownForest, toOutline, safeFileName } from "../src/core/markdown.ts";
@@ -1898,4 +1899,42 @@ test("接回树里会清掉主题标记（否则 Markdown 标题级别错乱）"
   const t2 = back.children[0].children[0];
   assert.equal(t2.kind, undefined, "kind 被清掉，交给结构推断");
   assert.equal(t2.detached, undefined, "detached 也清掉");
+});
+
+test("连线自动挂靠：多主题下连两个主题，箭头指向的挂到另一端下", () => {
+  const root = {
+    id: "c",
+    text: "",
+    children: [
+      { id: "a", text: "注塑机", children: [] },
+      { id: "b", text: "立式", children: [] },
+    ],
+  };
+  const result = attachByLink(root, "a", "b", true);
+  assert.ok(result);
+  assert.equal(result.childId, "b");
+  assert.equal(result.parentId, "a");
+  assert.deepEqual(result.root.children.map((c) => c.id), ["a"]);
+  assert.deepEqual(result.root.children[0].children.map((c) => c.id), ["b"]);
+});
+
+test("连线自动挂靠：单主题下两个普通节点连线不触发挂靠（保留自由连线）", () => {
+  const root = {
+    id: "r",
+    text: "中心",
+    children: [
+      { id: "a", text: "A", children: [] },
+      { id: "b", text: "B", children: [] },
+    ],
+  };
+  assert.equal(attachByLink(root, "a", "b", false), undefined);
+});
+
+test("连线自动挂靠：两端都已是普通节点时不动", () => {
+  const root = {
+    id: "c",
+    text: "",
+    children: [{ id: "a", text: "A", children: [{ id: "x", text: "X", children: [] }] }],
+  };
+  assert.equal(attachByLink(root, "x", "a", true), undefined);
 });

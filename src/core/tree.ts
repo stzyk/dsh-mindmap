@@ -1615,3 +1615,65 @@ export function setLinkStyle(
   });
   return hit ? next : undefined;
 }
+
+/**
+ * 画一条连线时自动建立从属关系。
+ *
+ * 规则（用户要求）：**连线一建立就自动调整层级**。
+ *   - 一端是顶层节点（1 级）、另一端不是 → 把顶层那个挂到另一端下面；
+ *   - 两端都是顶层 / 都不是 → 不动（连线只是关系标注）。
+ *
+ * @returns 新树与被挂靠的节点 id；不该自动挂靠时返回 undefined。
+ */
+export function attachByLink(
+  root: MindNode,
+  from: string,
+  to: string,
+  multiTheme = false,
+): { root: MindNode; childId: string; parentId: string } | undefined {
+  /*
+   * "1 级节点" = **主题**，不是"根的直接子级"。
+   *
+   * 单主题时只有根自己是主题，它的 children 都是普通节点（深度 1）；
+   * 多主题时容器根不渲染，它的 children 才是并列的主题。
+   * 搞错这一点的话，单主题文档里连两个普通节点也会被自动挂靠，
+   * 自由连线功能就等于没了。
+   */
+  const isTop = (id: string): boolean => {
+    if (!multiTheme) return id === root.id;
+    const found = locate(root, id);
+    return found !== undefined && found.parent !== undefined && found.parent.id === root.id;
+  };
+  /*
+   * 方向语义：连线是 from -> to，箭头指向谁，谁就是子节点。
+   *
+   * 所以只要 to 还是顶层（1 级），就把它挂到 from 下面——
+   * 两个都是主题时也一样，这正是用户"连线即建立从属"的用法。
+   * 反过来，如果 from 是顶层而 to 已经挂在别处，说明线是从子节点拉回主题的，
+   * 那就把 from 挂到 to 下面。
+   */
+  let childId: string;
+  let parentId: string;
+  if (isTop(to)) {
+    childId = to;
+    parentId = from;
+  } else if (isTop(from)) {
+    childId = from;
+    parentId = to;
+  } else {
+    return undefined;
+  }
+  // 防成环：父级不能在子节点的子树里
+  if (pathTo(root, parentId).some((node) => node.id === childId)) return undefined;
+
+  const next = cloneNode(root);
+  const moved = locate(next, childId);
+  if (moved === undefined || moved.parent === undefined) return undefined;
+  moved.parent.children.splice(moved.index, 1);
+  const host = locate(next, parentId);
+  if (host === undefined) return undefined;
+  delete moved.node.kind;
+  delete moved.node.detached;
+  host.node.children.push(moved.node);
+  return { root: next, childId, parentId };
+}
