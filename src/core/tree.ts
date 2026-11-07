@@ -145,6 +145,13 @@ export interface MindLink {
   to: string;
   /** 连线上可以写文字。 */
   label?: string;
+  /**
+   * 线型。缺省跟随文档默认（`MindDoc.linkStyle`）。
+   *
+   * 自由连线早期一律画成虚线（用来和父子连线区分），但用户反馈
+   * "自己拉出来的线为什么是虚线，而且改不了"——所以也给样式开关。
+   */
+  style?: "solid" | "dashed";
 }
 
 /** 一份导图文档。 */
@@ -1274,7 +1281,11 @@ export function normalizeLinks(input: unknown, root: MindNode): MindLink[] | und
     const id = typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id.trim() : newId("lnk");
     const label =
       typeof raw.label === "string" ? raw.label.replace(/\s+/g, " ").trim().slice(0, MAX_EDGE_LABEL) : "";
-    out.push(label.length > 0 ? { id, from, to, label } : { id, from, to });
+    const style = raw.style === "solid" || raw.style === "dashed" ? raw.style : undefined;
+    const base: MindLink = { id, from, to };
+    if (label.length > 0) base.label = label;
+    if (style !== undefined) base.style = style;
+    out.push(base);
   }
   return out.length > 0 ? out : undefined;
 }
@@ -1502,4 +1513,27 @@ export function setEdgeStyle(
   if (style === undefined) delete target.node.edgeStyle;
   else target.node.edgeStyle = style;
   return next;
+}
+
+/**
+ * 设置某条自由连线的线型。
+ *
+ * @returns 新的连线列表；连线不存在时返回 undefined。
+ */
+export function setLinkStyle(
+  links: readonly MindLink[] | undefined,
+  id: string,
+  style: "solid" | "dashed" | undefined,
+): MindLink[] | undefined {
+  if (links === undefined) return undefined;
+  let hit = false;
+  const next = links.map((link) => {
+    if (link.id !== id) return link;
+    hit = true;
+    const copy: MindLink = { ...link };
+    if (style === undefined) delete copy.style;
+    else copy.style = style;
+    return copy;
+  });
+  return hit ? next : undefined;
 }

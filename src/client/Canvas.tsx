@@ -1400,46 +1400,26 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
       const b = byId.get(link.to);
       if (a === undefined || b === undefined) continue;
       /*
-       * 从哪个边出发，看两个节点的**相对方位**。
+       * 连接点固定在**左右两端**，不走上/下边。
        *
-       * 只按"谁在右边"判断是不够的：同级兄弟是纵向排的，两个节点 x 完全一样，
-       * 那样算出来的线会从 A 的左边绕到 B 的右边，绕一大圈还压在节点上。
-       * 横向距离占优就左右连，纵向占优就上下连。
+       * 早期按"横向距离占优还是纵向占优"决定连哪条边，于是两个上下相邻的
+       * 节点会连成一条竖线，端点落在节点顶部和底部——用户明确要求
+       * "接线的位置不能在节点的上下位置"，所以一律走左右边。
        */
       const acx = a.x + a.width / 2;
       const acy = a.y + a.height / 2;
       const bcx = b.x + b.width / 2;
       const bcy = b.y + b.height / 2;
       const dx = bcx - acx;
-      const dy = bcy - acy;
-      const horizontal = Math.abs(dx) >= Math.abs(dy);
-
-      let x1: number;
-      let y1: number;
-      let x2: number;
-      let y2: number;
-      let d: string;
-      if (horizontal) {
-        const forward = dx >= 0;
-        x1 = forward ? a.x + a.width : a.x;
-        y1 = acy;
-        x2 = forward ? b.x : b.x + b.width;
-        y2 = bcy;
-        const midX = x1 + (x2 - x1) * 0.55;
-        d = "M " + String(x1) + " " + String(y1) +
-            " C " + String(midX) + " " + String(y1) + ", " + String(midX) + " " + String(y2) +
-            ", " + String(x2) + " " + String(y2);
-      } else {
-        const down = dy >= 0;
-        x1 = acx;
-        y1 = down ? a.y + a.height : a.y;
-        x2 = bcx;
-        y2 = down ? b.y : b.y + b.height;
-        const midY = y1 + (y2 - y1) * 0.55;
-        d = "M " + String(x1) + " " + String(y1) +
-            " C " + String(x1) + " " + String(midY) + ", " + String(x2) + " " + String(midY) +
-            ", " + String(x2) + " " + String(y2);
-      }
+      const forward = dx >= 0;
+      const x1 = forward ? a.x + a.width : a.x;
+      const y1 = acy;
+      const x2 = forward ? b.x : b.x + b.width;
+      const y2 = bcy;
+      const midX = x1 + (x2 - x1) * 0.55;
+      const d = "M " + String(x1) + " " + String(y1) +
+          " C " + String(midX) + " " + String(y1) + ", " + String(midX) + " " + String(y2) +
+          ", " + String(x2) + " " + String(y2);
       out.push({
         link,
         d,
@@ -2312,6 +2292,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
               <path
                 className="mm-link mm-free-link"
                 data-selected={state.selectedFreeLinkId === link.id ? "true" : undefined}
+                data-style={link.style ?? doc.linkStyle ?? "solid"}
                 d={d}
               />
               <path
@@ -2333,6 +2314,36 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                 <text className="mm-free-link-label" x={midX} y={midY - 6} textAnchor="middle">
                   {link.label}
                 </text>
+              ) : null}
+              {/*
+               * 自由连线的线型切换：选中这条线时出现，和父子连线保持同一套操作。
+               */}
+              {state.selectedFreeLinkId === link.id ? (
+                <g
+                  className="mm-edge-style"
+                  transform={"translate(" + String(midX + 44) + ", " + String(midY - 18) + ")"}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <rect className="mm-edge-style-bg" x={0} y={0} width={86} height={20} rx={10} />
+                  <text
+                    className="mm-edge-style-opt"
+                    data-active={(link.style ?? doc.linkStyle ?? "solid") === "solid" ? "true" : undefined}
+                    x={22}
+                    y={14}
+                    onClick={() => store.setFreeLinkStyle(link.id, "solid")}
+                  >
+                    实线
+                  </text>
+                  <text
+                    className="mm-edge-style-opt"
+                    data-active={(link.style ?? doc.linkStyle ?? "solid") === "dashed" ? "true" : undefined}
+                    x={64}
+                    y={14}
+                    onClick={() => store.setFreeLinkStyle(link.id, "dashed")}
+                  >
+                    虚线
+                  </text>
+                </g>
               ) : null}
               {state.selectedFreeLinkId === link.id ? (
                 <g

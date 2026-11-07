@@ -33,6 +33,7 @@ import {
   setNodeKind,
   sortSiblingsByPosition,
   setEdgeStyle,
+  setLinkStyle,
   duplicateNodes,
   repointEdge,
   locate,
@@ -890,6 +891,23 @@ export function createStore(): MindmapStore {
       mutateTree(next);
       toast("已断开连线（节点还在原位）");
       return true;
+    },
+
+    setFreeLinkStyle(id, style) {
+      if (state.doc === null) return;
+      const next = setLinkStyle(state.doc.links, id, style);
+      if (next === undefined) return;
+      // 和父子连线一致：改一次就记成文档默认
+      set({
+        doc: {
+          ...state.doc,
+          links: next,
+          linkStyle: style ?? "solid",
+          updatedAt: Date.now(),
+        },
+      });
+      pushDoc({ links: next });
+      scheduleSave();
     },
 
     setEdgeStyle(id, style) {

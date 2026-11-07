@@ -1299,9 +1299,18 @@ img.mm-node-img { cursor: zoom-in; }
 /*
  * 和父子连线用不同线型区分：实线 = 层级结构，虚线 = 我另外标的关联。
  */
+/*
+ * 自由连线不再强制虚线。
+ *
+ * 原来写死 stroke-dasharray 用来和父子连线区分，结果用户问
+ * "自己拉出来的线为什么是虚线，而且改不了"。现在线型由 data-style 决定，
+ * 默认实线，需要区分时用户自己切。
+ */
 .mm-free-link {
-  stroke-dasharray: 6 4;
   opacity: .85;
+}
+.mm-free-link[data-style="dashed"] {
+  stroke-dasharray: 6 4;
 }
 .mm-free-link[data-selected="true"] {
   stroke: var(--dsw-alias-state-business-primary, #4a7dff);

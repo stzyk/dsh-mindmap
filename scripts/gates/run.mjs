@@ -53,6 +53,25 @@ const declared = [
   ...Object.keys(pkg.peerDependencies ?? {}),
   ...Object.keys(pkg.optionalDependencies ?? {}),
 ];
+// ── CSS 注释里不能出现反引号 ─────────────────────────────
+// 反引号会把 styles.ts 的模板字符串提前闭合，整个客户端包直接炸掉。
+// 这个坑踩过四次了，加条门禁兜住。
+{
+  const css = await readFile(resolve(root, "src/client/styles.ts"), "utf8");
+  // 只看模板字符串**内部**的行：文件头的 JSDoc 在字符串外面，有反引号也无害
+  const startAt = css.indexOf("export const CSS = \`");
+  const inner = startAt < 0 ? "" : css.slice(startAt);
+  const bad = inner
+    .split("\n")
+    .map((line, no) => ({ line, no: no + 1 }))
+    .filter(({ line }) => /^\s*(\*|\/\*)/.test(line) && line.includes("`"));
+  check(
+    "styles.ts: CSS 注释里没有反引号",
+    bad.length === 0,
+    bad.map(({ no, line }) => `第 ${no} 行 ${line.trim().slice(0, 50)}`).join(" | "),
+  );
+}
+
 check(
   "package.json: 无 @deepseek-ai/* 依赖",
   declared.every((dep) => !dep.startsWith("@deepseek-ai/")),
