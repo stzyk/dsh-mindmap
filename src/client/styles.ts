@@ -164,6 +164,13 @@ export const CSS = `
 .mm-split-main {
   flex: 1;
   min-width: 0;
+  /*
+   * 必须是 flex 列：里面有工具栏 + 画布两部分，
+   * 不声明的话画布拿不到约束高度，会撑出容器底部 43px（被裁掉）。
+   */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
