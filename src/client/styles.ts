@@ -2117,8 +2117,9 @@ img.mm-node-img { cursor: zoom-in; }
   bottom: 0;
   width: 300px;
   z-index: 20;
-  box-shadow: -4px 0 18px rgba(0, 0, 0, .10);
+  /* 不要投影：那层模糊阴影看起来像"半透明背景"，用户要求取消 */
   background: var(--dsw-alias-bg-base, #fff);
+  border-left: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .10));
 }
 
 .mm-split-side[data-mm-side="edge-style"] {
@@ -2132,8 +2133,9 @@ img.mm-node-img { cursor: zoom-in; }
   bottom: 0;
   width: 288px;
   z-index: 20;
-  box-shadow: -4px 0 18px rgba(0, 0, 0, .10);
+  /* 不要投影：那层模糊阴影看起来像"半透明背景"，用户要求取消 */
   background: var(--dsw-alias-bg-base, #fff);
+  border-left: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .10));
 }
 
 `;

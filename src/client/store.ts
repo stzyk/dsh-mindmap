@@ -35,6 +35,7 @@ import {
   setEdgeStyle,
   setLinkStyle,
   setEdgeAttrs,
+  syncKind,
   setLinkAttrs,
   attachByLink,
   duplicateNodes,
@@ -385,6 +386,14 @@ export function createStore(): MindmapStore {
    */
   const mutateTree = (root: MindNode): void => {
     if (state.doc === null) return;
+    /*
+     * 每次改结构都重新按层级校准 kind。
+     *
+     * 只在读盘时校准是不够的：把带子树的节点重新连线之后，结构变了但
+     * kind 还留着旧值，Markdown 标题级别和自动排版就跟着错乱。
+     * 这里统一收口——结构改完立刻让 kind 跟上。
+     */
+    syncKind(root, state.doc.multiTheme === true);
     if (!history.canUndo()) {
       history.reset(
         state.doc.root,

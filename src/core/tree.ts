@@ -375,7 +375,7 @@ function markSubtreeAsNodes(node: MindNode): void {
  *   - 单主题：根节点就是主题，它的子级全是普通节点；
  *   - 多主题：根退化成不渲染的容器，它的 children 才是并列的主题。
  */
-function syncKind(root: MindNode, multiTheme: boolean): void {
+export function syncKind(root: MindNode, multiTheme: boolean): void {
   root.kind = multiTheme ? "node" : "theme";
   for (const theme of root.children) {
     if (multiTheme) {
