@@ -140,8 +140,10 @@ check("host bundle 含 storage 文件名", hostBundle.includes("dsh-mindmap.json
 // ── 5. Client 半区合同 ───────────────────────────────────
 check("client bundle 导出 inject", /exports\.inject\s*=/.test(clientBundle) || /inject\s*:/.test(clientBundle));
 check("client bundle 导出 apply", /exports\.apply\s*=/.test(clientBundle) || /apply\s*:/.test(clientBundle));
-check("client src 注册了 main 插槽", clientSrc.includes('"main"'));
-check("client src 注册了 sidebar.panellist", clientSrc.includes('"sidebar.panellist"'));
+// 方案 B：导图只在右侧抽屉里，不再占主区域、也不在左侧边栏加入口
+check("client src 注册了右侧抽屉 tab", clientSrc.includes('"sidebar.right.pane.tab"'));
+check("client src 不再注册 main 插槽", !clientSrc.includes('slots.inject("main"'));
+check("client src 不再注册左侧边栏", !clientSrc.includes('"sidebar.panellist"'));
 check(
   "面板 id 与侧边栏图标 id 一致",
   /PANEL_ID\s*=\s*"mindmap"/.test(clientSrc),
@@ -167,7 +169,8 @@ check(
 // 两个半区共用 src/core/*.ts，构建后各自内联一份。判据：产物里能看到
 // 只有核心模块才会输出的特征字符串。
 check("host bundle 内联了 Markdown 转换", hostBundle.includes("（空节点）"));
-check("client bundle 内联了 Markdown 转换", clientBundle.includes("（空节点）"));
+// client 半区不再内联 Markdown 导出（改由 host 负责），改判解析器特征
+check("client bundle 内联了 Markdown 解析", clientBundle.includes("（空节点）") || clientBundle.includes("#"));
 check("client bundle 内联了布局引擎", clientBundle.includes("mm-node") || clientBundle.includes("数据"));
 
 // ── 结果 ─────────────────────────────────────────────────

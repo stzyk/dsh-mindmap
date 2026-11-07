@@ -28,6 +28,8 @@ import { DocList } from "./DocList.tsx";
 import { MarkdownPanel } from "./MarkdownPanel.tsx";
 import { StylePanel } from "./StylePanel.tsx";
 import { EdgePanel } from "./EdgePanel.tsx";
+import { AiPanel, type AiMessage } from "./AiPanel.tsx";
+import { MINDMAP_TAB_ID, mindmapTabDefinition } from "./aiTab.ts";
 import { locate, pathTo } from "../core/tree.ts";
 import { createStore, PLUGIN_ID, type MindmapStore, type ViewState } from "./store.ts";
 import type { MindNode } from "../core/tree.ts";
@@ -36,7 +38,13 @@ import type { MindNode } from "../core/tree.ts";
 export const PANEL_ID = "mindmap";
 
 /** 严格注入：插槽服务 + 布局服务（图标点进面板由侧边栏驱动，这里不需要 layout）。 */
-export const inject = ["slots"];
+/*
+ * slots：面板插槽。
+ * sidebarRightTabs / sidebarRight：右侧栏的 tab 类型注册与打开入口
+ * （AI 助手抽屉用；两者都声明成必需——缺一个就注册不了，
+ *  不如让它在加载时就报错，而不是等到用户点开才发现是空白）。
+ */
+export const inject = ["slots", "sidebarRightTabs", "sidebarRight"];
 
 /** 宿主传进来的插槽服务面（结构化最小类型，避免版本耦合）。 */
 interface SlotsService {
@@ -222,6 +230,43 @@ function MindmapIcon({ size = 16 }: { size?: number }): React.ReactElement {
 }
 
 /** 注册 Client 半区。 */
+/**
+ * 右侧栏里的导图 tab。
+ *
+ * 内容是完整的导图应用（列表页 + 画布带工具栏），宽度由右侧栏决定。
+ * 自己持有一份 store：每个 tab 各自一份编辑状态，互不干扰。
+ */
+/**
+ * 侧边栏入口按钮。
+ *
+ * 点它 = 在当前会话的右侧栏打开导图 tab。不做成"占满主区域"的主面板，
+ * 因为那样会话界面会被卸载，右侧栏跟着消失。
+ */
+function MindmapLauncher({ ctx }: { ctx: ClientContext }): React.ReactElement {
+  return React.createElement(
+    "button",
+    {
+      type: "button",
+      className: "mm-launch",
+      "data-mm-action": "open-mindmap",
+      title: "打开思维导图",
+      onClick: () => {
+        const right = (ctx as unknown as {
+          sidebarRight?: { openTab: (kind: string) => void };
+        }).sidebarRight;
+        right?.openTab(MINDMAP_TAB_ID);
+      },
+    },
+    React.createElement(MindmapIcon, { size: 16 }),
+    React.createElement("span", null, "思维导图"),
+  );
+}
+
+function MindmapTab({ store }: { store: MindmapStore }): React.ReactElement {
+  return React.createElement(MindMapApp, { store });
+}
+
+
 export function apply(ctx: ClientContext): void {
   const slots = ctx.slots;
   if (slots === undefined) {
@@ -229,6 +274,12 @@ export function apply(ctx: ClientContext): void {
     return;
   }
 
+  /*
+   * 全局唯一的 store：右侧 tab 和调试句柄共用同一个实例。
+   *
+   * 早先 main 面板和右侧 tab 各建一个，导致"状态是 edit、界面还停在列表"
+   * 这种鬼打墙——两边看的根本不是同一份数据。
+   */
   const store = createStore();
 
   // 样式：挂在 document.head，卸载时整张移除
@@ -244,39 +295,78 @@ export function apply(ctx: ClientContext): void {
     };
   }, "mindmap styles");
 
-  // 主面板
-  slots.inject("main", () => {
-    let dispose: unknown;
-    try {
-      dispose = slots.register(
-        { name: "main", key: PANEL_ID, label: "思维导图" },
-        () => React.createElement(MindMapApp, { store }),
-      );
-    } catch (error) {
-      console.error("[" + PLUGIN_ID + "] main 插槽注册失败：", error);
-    }
-    return () => {
-      if (typeof dispose === "function") (dispose as () => void)();
-    };
-  });
+  /*
+   * 不再注册 `main` 面板。
+   *
+   * 方案 B 下导图只在右侧栏的 tab 里出现。保留 main 会带来两个问题：
+   *   ① 两处各自 createStore()，调试句柄和实际渲染的可能不是同一个 store
+   *      （现象：状态显示 edit，界面还停在列表）；
+   *   ② 占满主区域会把会话界面换掉，右侧栏随之失去挂载点。
+   */
+  /*
+   * 不再往左侧边栏注册任何东西。
+   *
+   * 左侧是"切换主面板"的语义——点它会占满主区域、把会话界面换掉，
+   * 右侧抽屉随之失去挂载点。导图的入口在右侧抽屉首页的卡片里
+   * （见 aiTab.ts 的 guide），和「图像工作台」一致。
+   */
 
-  // 侧边栏图标
-  slots.inject("sidebar.panellist", () => {
-    let dispose: unknown;
-    try {
-      dispose = slots.register(
-        { name: "sidebar.panellist", id: PANEL_ID, order: 40, label: "思维导图" },
-        MindmapIcon,
-      );
-    } catch (error) {
-      console.error("[" + PLUGIN_ID + "] sidebar.panellist 插槽注册失败：", error);
-    }
-    return () => {
-      if (typeof dispose === "function") (dispose as () => void)();
-    };
-  });
+  /*
+   * 注册右侧抽屉的 tab：先声明类型，再挂面板。
+   *
+   * 两步缺一不可——只注册类型不挂 body，openTab 会开出空白页；
+   * 只挂 body 不注册类型，openTab 直接找不到这个 kind。
+   */
+  const rightTabs = (ctx as unknown as {
+    sidebarRightTabs?: { register: (def: unknown) => () => void };
+  }).sidebarRightTabs;
 
-  // 启动即拉一次列表：这样侧边栏点进来是热的，不用等首屏
+  /*
+   * 暴露一个明确的全局句柄：斜杠命令、调试和将来的 AI 工具都要能打开这个抽屉，
+   * 但它们拿不到 client 上下文的 ctx。比层层传 props 干净。
+   */
+  try {
+    (window as unknown as { __dshSidebarRight?: unknown }).__dshSidebarRight = {
+      openTab: (kind: string) => {
+        const right = (ctx as unknown as { sidebarRight?: { openTab: (k: string) => void } }).sidebarRight;
+        right?.openTab(kind);
+      },
+    };
+  } catch {
+    /* 非浏览器环境忽略 */
+  }
+
+  if (rightTabs !== undefined) {
+    ctx.effect(() => {
+      const dispose = rightTabs.register(mindmapTabDefinition());
+      return () => {
+        if (typeof dispose === "function") dispose();
+      };
+    }, "mindmap tab type");
+
+    slots.inject("sidebar.right.pane.tab", () => {
+      let dispose: unknown;
+      try {
+        dispose = slots.register(
+          {
+            name: "sidebar.right.pane.tab",
+            key: MINDMAP_TAB_ID,
+            inject: () => ({ store }),
+          },
+          MindmapTab,
+        );
+      } catch (error) {
+        console.error("[" + PLUGIN_ID + "] sidebar.right.pane.tab 注册失败：", error);
+      }
+      return () => {
+        if (typeof dispose === "function")(dispose as () => void)();
+      };
+    });
+  } else {
+    console.warn("[" + PLUGIN_ID + "] sidebarRightTabs 服务不可用，导图抽屉未注册");
+  }
+
+  // 启动即拉一次列表：这样点开抽屉是热的，不用等首屏
   void store.boot();
 
   ctx.effect(() => {

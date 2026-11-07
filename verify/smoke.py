@@ -2009,16 +2009,23 @@ def main() -> int:
             geo = page.evaluate("""() => {
                 const el = document.querySelector('[data-mm-side="style"]');
                 const main = document.querySelector('.mm-split-main');
-                if (!el || !main) return null;
+                // 参照物用画布本体：.mm-split-main 还含 43px 工具栏，不是"画布高度"
+                const wrap = document.querySelector('.mm-canvas-wrap');
+                if (!el || !main || !wrap) return null;
                 const r = el.getBoundingClientRect();
                 const m = main.getBoundingClientRect();
+                const w = wrap.getBoundingClientRect();
                 return {x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height),
-                        canvasRight: Math.round(m.right), canvasH: Math.round(m.height)};
+                        canvasRight: Math.round(m.right), canvasH: Math.round(w.height),
+                        canvasTop: Math.round(w.top), drawerTop: Math.round(r.top)};
             }""")
             record(
                 "5l3",
                 "属性面板是画布右侧的抽屉",
-                geo is not None and geo["x"] >= geo["canvasRight"] - 2 and geo["w"] < 400,
+                # 浮层设计：贴右边缘、盖在画布上（不再要求"在画布右侧不重叠"）
+                geo is not None
+                and abs((geo["x"] + geo["w"]) - geo["canvasRight"]) <= 2
+                and geo["w"] < 400,
                 json.dumps(geo),
             )
             record(
