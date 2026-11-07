@@ -540,19 +540,30 @@ export function apply(ctx: HostServices): void {
               description,
               parameters,
               /*
-               * 输出契约是**必填**的（缺了注册会抛
-               * `tool "x" must declare output { schema, render, ... }`）。
-               * 四个工具都返回纯文本，所以 schema 统一是 string，
-               * render 把它包成一个 text block。
+               * 输出契约必须是一个 **object schema**。
+               *
+               * 早先写成 `{ type: "string" }`：注册不报错，但模型侧拼出来的
+               * 请求体不合法，上游直接 400（code 1210「API 调用参数有误」），
+               * 整个会话都跑不起来。对照能正常工作的工具，返回值统一包成
+               * `{ text }` 对象，render 再把 text 取出来。
                */
               output: {
-                schema: { type: "string" },
+                /*
+                 * 必须是 object schema。
+                 *
+                 * 试过 { type: "string" }：本地注册通过，但模型侧拼出来的
+                 * 请求体不合法，上游直接 400（code 1210），整个会话跑不起来。
+                 * 也不能写 { type: "json" }——本地校验就报
+                 * "schema.type must be one of object/array/string/number/…"。
+                 */
+                schema: { type: "object", additionalProperties: true },
                 render: (_args: unknown, value: unknown) => [
-                  { type: "text", text: String(value) },
+                  { type: "text", text: String((value as { text?: unknown })?.text ?? "") },
                 ],
               },
               async execute(args: Record<string, unknown>) {
-                return run(args);
+                // 统一包成对象：output.schema 声明的是对象
+                return { text: await run(args) };
               },
             });
             registeredTools.push(name);
