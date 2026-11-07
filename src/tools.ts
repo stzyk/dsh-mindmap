@@ -26,7 +26,8 @@ import { safeFileName } from "./core/markdown.ts";
 
 /** 文档存储的最小接口（和 store.ts 的实现对齐，异步）。 */
 export interface ToolStore {
-  list(): Array<{ id: string; title: string; nodes: number; updatedAt: number }>;
+  /** 摘要里的字段是 nodeCount，不是 nodes（写错会显示 undefined）。 */
+  list(): Array<{ id: string; title: string; nodeCount: number; updatedAt: number }>;
   get(id: string): { id: string; title: string; root: MindNode } | undefined;
   create(title: string, rootText?: string): Promise<{ id: string }>;
   save(input: unknown): Promise<{ id: string }>;

@@ -554,8 +554,15 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
             toolService!.register({
               name,
               description,
-              // DSL → 标准 JSON Schema（required: true 收进 required 数组）
-              parameters: toJsonSchema(parameters),
+              /*
+               * DSL → 标准 JSON Schema。
+               *
+               * 注意 parameters 传进来是**扁平的属性表**（{ id: {...}, ops: {...} }），
+               * 不是完整的 object schema。必须自己包一层，
+               * 否则 toJsonSchema 找不到 properties，会把它原样透传——
+               * 上游收到的 parameters 就不是合法的 object schema 了。
+               */
+              parameters: toJsonSchema({ type: "object", properties: parameters }),
               /*
                * 输出契约必须是一个 **object schema**。
                *
@@ -606,7 +613,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
             const docs = store.list();
             if (docs.length === 0) return "还没有任何导图。";
             return docs
-              .map((doc) => "- " + doc.title + "  [" + doc.id + "]  " + String(doc.nodes) + " 节点")
+              .map((doc) => "- " + doc.title + "  [" + doc.id + "]  " + String(doc.nodeCount) + " 节点")
               .join("\n");
           },
         );
