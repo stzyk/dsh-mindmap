@@ -158,6 +158,8 @@ export const CSS = `
   min-height: 0;
   display: flex;
   flex-direction: row;
+  /* 连线抽屉用绝对定位浮在上面，需要这个作为定位基准 */
+  position: relative;
 }
 .mm-split-main {
   flex: 1;
@@ -292,7 +294,6 @@ export const CSS = `
   color: var(--dsw-alias-label-primary, #1a1a1a);
   font-size: 13px;
   line-height: 1.3;
-  cursor: pointer;
   user-select: none;
   transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
 }
@@ -2073,6 +2074,66 @@ img.mm-node-img { cursor: zoom-in; }
 .mm-edge-style-opt[data-active="true"] {
   fill: var(--dsw-alias-state-business-primary, #4a7dff);
   font-weight: 600;
+}
+
+/* 连线属性抽屉里的颜色小圆点 */
+.mm-edge-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.mm-style-foot {
+  padding: 8px 2px 0;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-tertiary, #8a8a8a);
+}
+
+/*
+ * 连线属性抽屉：**浮层**，不参与 flex 布局。
+ *
+ * 节点属性抽屉会把画布挤窄（用户要求"画布整体左移、不被遮挡"），
+ * 但连线抽屉一挤窄就出问题：画布重排，线在两次点击之间挪了位置，
+ * 双击永远打不中；端点手柄也会被挤到可视区外。
+ * 所以连线抽屉改成浮层——画布尺寸不变，点哪儿就是哪儿。
+ */
+/* Markdown 抽屉：上边留出工具栏那 43px，和画布同高 */
+.mm-split-side[data-mm-side="markdown"] {
+  margin-top: 43px;
+}
+
+/*
+ * 节点属性抽屉也改成**浮层**（用户要求，和连线属性一致）。
+ *
+ * 原来它参与 flex 布局，会把画布挤窄：选中节点后整个图往左跳一下，
+ * 正在看的位置就跑了。浮层不动画布，位置稳定；选中节点时会预留
+ * 320px 滚动边距，保证它不会被抽屉盖住。
+ */
+.mm-split-side[data-mm-side="style"] {
+  position: absolute;
+  top: 43px;
+  right: 0;
+  bottom: 0;
+  width: 300px;
+  z-index: 20;
+  box-shadow: -4px 0 18px rgba(0, 0, 0, .10);
+  background: var(--dsw-alias-bg-base, #fff);
+}
+
+.mm-split-side[data-mm-side="edge-style"] {
+  position: absolute;
+  /*
+   * 和画布**同高**：上沿对齐工具栏下方（43px），下沿贴底。
+   * 之前从 8px 开始，把工具栏的撤销/重做按钮压住了。
+   */
+  top: 43px;
+  right: 0;
+  bottom: 0;
+  width: 288px;
+  z-index: 20;
+  box-shadow: -4px 0 18px rgba(0, 0, 0, .10);
+  background: var(--dsw-alias-bg-base, #fff);
 }
 
 `;

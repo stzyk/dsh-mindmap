@@ -72,6 +72,49 @@ const declared = [
   );
 }
 
+// ── 同一选择器不能有互相冲突的规则体 ─────────────────────
+// 恢复 CSS 时留下过两份 .mm-free-link，后一份把线型钉成虚线，
+// 结果"改样式没反应"。冲突的重复规则是这类 bug 的温床。
+{
+  const css = await readFile(resolve(root, "src/client/styles.ts"), "utf8");
+  // 去掉 (?m) 内联标志：JS 用 m 标志代替
+  const ruleRe = new RegExp("^([^\\s/@][^{]*?)\\s*\\{([^{}]*)\\}", "gm");
+  const rules = [...css.matchAll(ruleRe)].map((m) => ({
+    sel: m[1].trim(),
+    body: m[2],
+    line: css.slice(0, m.index).split("\n").length,
+  }));
+  const bySel = new Map();
+  for (const rule of rules) {
+    if (!bySel.has(rule.sel)) bySel.set(rule.sel, []);
+    bySel.get(rule.sel).push(rule);
+  }
+  const conflicts = [];
+  for (const [sel, list] of bySel) {
+    if (list.length < 2) continue;
+    const props = new Map();
+    for (const rule of list) {
+      for (const decl of rule.body.split(";")) {
+        const at = decl.indexOf(":");
+        if (at < 0) continue;
+        const key = decl.slice(0, at).trim();
+        const value = decl.slice(at + 1).trim();
+        if (key.length === 0 || value.length === 0) continue;
+        if (props.has(key) && props.get(key).value !== value) {
+          conflicts.push(`${sel} 的 ${key}: 行${props.get(key).line}="${props.get(key).value}" vs 行${rule.line}="${value}"`);
+        } else if (!props.has(key)) {
+          props.set(key, { value, line: rule.line });
+        }
+      }
+    }
+  }
+  check(
+    "styles.ts: 同一选择器没有互相冲突的重复规则",
+    conflicts.length === 0,
+    conflicts.slice(0, 3).join(" | "),
+  );
+}
+
 check(
   "package.json: 无 @deepseek-ai/* 依赖",
   declared.every((dep) => !dep.startsWith("@deepseek-ai/")),

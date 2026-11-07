@@ -488,8 +488,22 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
   /** 选中节点变化时把它滚进视野（只在看不见时挪，避免打断用户）。 */
   React.useEffect(() => {
     if (selectedId === null) return;
-    scrollNodeIntoView(selectedId);
+    // 属性抽屉是浮层（300px），留出边距避免选中节点被盖住
+    scrollNodeIntoView(selectedId, 320);
   }, [selectedId, scrollNodeIntoView]);
+
+  /**
+   * 选中连线时把它的子节点滚进视野。
+   *
+   * 选中线会打开右侧属性抽屉，画布随之变窄——线两端的把手很容易被挤到
+   * 可视区外（甚至压到抽屉下面），用户看着"手柄在但拖不动"。
+   * 滚一下就能保证把手落在看得见的地方。
+   */
+  React.useEffect(() => {
+    if (state.selectedEdgeId === null) return;
+    // 留出 320px：连线抽屉是浮层（288px），不预留就会被它盖住
+    scrollNodeIntoView(state.selectedEdgeId, 320);
+  }, [state.selectedEdgeId, scrollNodeIntoView]);
 
   /** 编辑态变化时也滚一次（编辑框比节点宽）。 */
   React.useEffect(() => {
@@ -637,6 +651,8 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
   } | null>(null);
   const relinkPendingRef = React.useRef<typeof relinkPending>(null);
   relinkPendingRef.current = relinkPending;
+  /** 上一次点击连线的时间：用来自己判双击（见 onLinkPointerUp）。 */
+  const lastEdgeClickRef = React.useRef<{ id: string; at: number } | null>(null);
   const relinkRef = React.useRef<{
     childId: string;
     end: "parent" | "child";
@@ -817,16 +833,30 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
       }
 
       /*
-       * 没超过阈值 = 一次点击：把这条边**选中**并直接打开文字编辑。
+       * 没超过阈值 = 一次点击：**只选中**，不弹文字输入框。
        *
-       * 这就是"边是独立对象"的落点——点一下线就能操作它，
-       * 不必先找到它的子节点。选中后两端手柄和删除按钮都会出现。
+       * 选中是为了让右侧抽屉出现（改线型 / 粗细 / 颜色）；一选中就冒出
+       * 输入框会盖住线本身，也容易误触发。要写说明就双击（见 onDoubleClick）。
        */
       if (!moved) {
         store.selectEdge(state_.childId);
-        const link = layout?.links.find((item) => item.toId === state_.childId);
-        setEdgeDraft(link?.label ?? "");
-        setEdgeEditId(state_.childId);
+        /*
+         * 双击 = 打开文字编辑。
+         *
+         * 不能依赖 React 的 onDoubleClick：`beginRelink` 在 pointerdown 上调了
+         * preventDefault，浏览器会**抑制后续的 click / dblclick 兼容事件**，
+         * 所以双击回调根本不会触发。这里自己按"两次点击间隔"判定。
+         */
+        const now = Date.now();
+        const last = lastEdgeClickRef.current;
+        if (last !== null && last.id === state_.childId && now - last.at < 400) {
+          lastEdgeClickRef.current = null;
+          setEdgeDraft(layout?.links.find((item) => item.toId === state_.childId)?.label ?? "");
+          setEdgeEditId(state_.childId);
+          return;
+        }
+        lastEdgeClickRef.current = { id: state_.childId, at: now };
+        setEdgeEditId(null);
         return;
       }
 
@@ -2105,6 +2135,10 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                   data-active={pathIds.has(link.fromId) && pathIds.has(link.toId) ? "true" : undefined}
                   data-selected={state.selectedEdgeId === link.toId ? "true" : undefined}
                   data-style={link.style ?? doc.linkStyle ?? "solid"}
+                  style={{
+                    ...(link.width !== undefined ? { strokeWidth: link.width } : {}),
+                    ...(link.color !== undefined ? { stroke: link.color } : {}),
+                  }}
                   d={d}
                 />
                 {/*
@@ -2189,48 +2223,6 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                 const HANDLE_INSET = 10;
                 return (
                   <g className="mm-edge-tools">
-                    {/*
-                     * 线型切换：只有选中这条线时才出现。
-                     * 选中节点时不该出现任何"改线"的入口（线是独立对象）。
-                     */}
-                    <g
-                      className="mm-edge-style"
-                      transform={
-                        "translate(" +
-                        String(midX + 44) +
-                        ", " +
-                        String(midY - 18) +
-                        ")"
-                      }
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <rect
-                        className="mm-edge-style-bg"
-                        x={0}
-                        y={0}
-                        width={86}
-                        height={20}
-                        rx={10}
-                      />
-                      <text
-                        className="mm-edge-style-opt"
-                        data-active={(link.style ?? "solid") === "solid" ? "true" : undefined}
-                        x={22}
-                        y={14}
-                        onClick={() => store.setEdgeStyle(link.toId, "solid")}
-                      >
-                        实线
-                      </text>
-                      <text
-                        className="mm-edge-style-opt"
-                        data-active={(link.style ?? "solid") === "dashed" ? "true" : undefined}
-                        x={64}
-                        y={14}
-                        onClick={() => store.setEdgeStyle(link.toId, "dashed")}
-                      >
-                        虚线
-                      </text>
-                    </g>
                     <circle
                       className="mm-edge-handle"
                       cx={link.x1 + HANDLE_INSET}
@@ -2300,6 +2292,10 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                  * （用户报的"选中状态下会变成虚线"就是这么来的）。
                  */
                 data-style={link.style ?? "solid"}
+                style={{
+                  ...(link.width !== undefined ? { strokeWidth: link.width } : {}),
+                  ...(link.color !== undefined ? { stroke: link.color } : {}),
+                }}
                 d={d}
               />
               <path
@@ -2309,11 +2305,21 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                 onPointerDown={(event) => {
                   event.stopPropagation();
                 }}
+                /*
+                 * 单击只选中，**不弹文本框**：选中是为了改样式（抽屉里），
+                 * 一选中就冒出输入框会挡住线本身，也容易误触发。
+                 * 想写说明就双击。
+                 */
                 onClick={(event) => {
                   event.stopPropagation();
                   store.selectFreeLink(link.id);
                   setEdgeDraft(link.label ?? "");
                   setEdgeEditId(null);
+                  setFreeLinkEditId(null);
+                }}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  setEdgeDraft(link.label ?? "");
                   setFreeLinkEditId(link.id);
                 }}
               />
@@ -2321,36 +2327,6 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                 <text className="mm-free-link-label" x={midX} y={midY - 6} textAnchor="middle">
                   {link.label}
                 </text>
-              ) : null}
-              {/*
-               * 自由连线的线型切换：选中这条线时出现，和父子连线保持同一套操作。
-               */}
-              {state.selectedFreeLinkId === link.id ? (
-                <g
-                  className="mm-edge-style"
-                  transform={"translate(" + String(midX + 44) + ", " + String(midY - 18) + ")"}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <rect className="mm-edge-style-bg" x={0} y={0} width={86} height={20} rx={10} />
-                  <text
-                    className="mm-edge-style-opt"
-                    data-active={(link.style ?? "solid") === "solid" ? "true" : undefined}
-                    x={22}
-                    y={14}
-                    onClick={() => store.setFreeLinkStyle(link.id, "solid")}
-                  >
-                    实线
-                  </text>
-                  <text
-                    className="mm-edge-style-opt"
-                    data-active={(link.style ?? "solid") === "dashed" ? "true" : undefined}
-                    x={64}
-                    y={14}
-                    onClick={() => store.setFreeLinkStyle(link.id, "dashed")}
-                  >
-                    虚线
-                  </text>
-                </g>
               ) : null}
               {state.selectedFreeLinkId === link.id ? (
                 <g

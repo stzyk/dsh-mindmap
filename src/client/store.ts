@@ -34,6 +34,8 @@ import {
   sortSiblingsByPosition,
   setEdgeStyle,
   setLinkStyle,
+  setEdgeAttrs,
+  setLinkAttrs,
   attachByLink,
   duplicateNodes,
   repointEdge,
@@ -911,6 +913,38 @@ export function createStore(): MindmapStore {
       scheduleSave();
     },
 
+    setEdgeWidth(id, width) {
+      if (state.doc === null) return;
+      const next = setEdgeAttrs(state.doc.root, id, { width });
+      if (next === undefined) return;
+      mutateTree(next);
+    },
+
+    setEdgeColor(id, color) {
+      if (state.doc === null) return;
+      const next = setEdgeAttrs(state.doc.root, id, { color });
+      if (next === undefined) return;
+      mutateTree(next);
+    },
+
+    setFreeLinkWidth(id, width) {
+      if (state.doc === null) return;
+      const next = setLinkAttrs(state.doc.links, id, { width });
+      if (next === undefined) return;
+      set({ doc: { ...state.doc, links: next, updatedAt: Date.now() } });
+      pushDoc({ links: next });
+      scheduleSave();
+    },
+
+    setFreeLinkColor(id, color) {
+      if (state.doc === null) return;
+      const next = setLinkAttrs(state.doc.links, id, { color });
+      if (next === undefined) return;
+      set({ doc: { ...state.doc, links: next, updatedAt: Date.now() } });
+      pushDoc({ links: next });
+      scheduleSave();
+    },
+
     setEdgeStyle(id, style) {
       if (state.doc === null) return;
       const next = setEdgeStyle(state.doc.root, id, style);
@@ -1143,12 +1177,31 @@ export function createStore(): MindmapStore {
       }
     },
 
+    /*
+     * 选中连线时**清掉节点选中**：两个抽屉互斥（用户要求），
+     * 节点选中还在的话 styleTarget 仍然存在，节点抽屉会一直占着，
+     * 连线抽屉就永远出不来。
+     */
     selectEdge(id) {
-      set({ selectedEdgeId: id, selectedFreeLinkId: null });
+      set({
+        selectedEdgeId: id,
+        selectedFreeLinkId: null,
+        selectedId: null,
+        selectedIds: [],
+        editingId: null,
+        styleOpen: false,
+      });
     },
 
     selectFreeLink(id) {
-      set({ selectedFreeLinkId: id, selectedEdgeId: null });
+      set({
+        selectedFreeLinkId: id,
+        selectedEdgeId: null,
+        selectedId: null,
+        selectedIds: [],
+        editingId: null,
+        styleOpen: false,
+      });
     },
 
     addFreeLink(from, to) {
@@ -1216,8 +1269,10 @@ export function createStore(): MindmapStore {
       set({
         selectedId: id,
         selectedIds: id === null ? [] : [id],
-        // 选节点时清掉连线选中：两套高亮同时亮着会让人分不清"现在操作的是什么"
+        // 选节点时清掉连线选中：两套高亮同时亮着会让人分不清"现在操作的是什么"，
+        // 两个抽屉也会同时打开（用户要求互斥）
         selectedEdgeId: null,
+        selectedFreeLinkId: null,
         // 选中即展开属性抽屉；取消选中时收起
         styleOpen: id !== null,
       });

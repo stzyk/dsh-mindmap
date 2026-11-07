@@ -83,6 +83,10 @@ export interface LayoutNode {
   detached?: boolean;
   /** 连到父节点那条线的样式（缺省跟随文档默认）。 */
   edgeStyle?: "solid" | "dashed";
+  /** 连到父节点那条线的粗细。 */
+  edgeWidth?: number;
+  /** 连到父节点那条线的颜色。 */
+  edgeColor?: string;
 }
 
 /** 一条父子连线（从父方框右中点连到子方框左中点）。 */
@@ -417,6 +421,8 @@ export function layoutTree(
       ...(node.edgeLabel !== undefined ? { edgeLabel: node.edgeLabel } : {}),
       ...(node.detached === true ? { detached: true } : {}),
       ...(node.edgeStyle !== undefined ? { edgeStyle: node.edgeStyle } : {}),
+      ...(node.edgeWidth !== undefined ? { edgeWidth: node.edgeWidth } : {}),
+      ...(node.edgeColor !== undefined ? { edgeColor: node.edgeColor } : {}),
       ...(node.marks !== undefined && node.marks.length > 0
         ? { marks: node.marks.map((key) => markOf(key)?.glyph ?? "").filter((g) => g.length > 0) }
         : {}),
@@ -512,6 +518,8 @@ export function layoutTree(
       fromId: parent.id,
       toId: node.id,
       ...(node.edgeStyle !== undefined ? { style: node.edgeStyle } : {}),
+      ...(node.edgeWidth !== undefined ? { width: node.edgeWidth } : {}),
+      ...(node.edgeColor !== undefined ? { color: node.edgeColor } : {}),
       x1,
       y1,
       x2,

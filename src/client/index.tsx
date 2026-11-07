@@ -27,6 +27,7 @@ import { CanvasToolbar, KeyboardHints, MindMapCanvas } from "./Canvas.tsx";
 import { DocList } from "./DocList.tsx";
 import { MarkdownPanel } from "./MarkdownPanel.tsx";
 import { StylePanel } from "./StylePanel.tsx";
+import { EdgePanel } from "./EdgePanel.tsx";
 import { locate, pathTo } from "../core/tree.ts";
 import { createStore, PLUGIN_ID, type MindmapStore, type ViewState } from "./store.ts";
 import type { MindNode } from "../core/tree.ts";
@@ -68,6 +69,44 @@ function MindMapApp({ store }: { store: MindmapStore }): React.ReactElement {
    * 多主题时 doc.root 是个不渲染的容器，布局是拿它的 children 各自当根排的，
    * 所以层级要再减 1。
    */
+  /**
+   * 当前选中的连线（父子连线优先，其次自由连线）。
+   * 有它就把抽屉切换成连线属性面板。
+   */
+  const edgeTarget: {
+    kind: "tree" | "free";
+    id: string;
+    style?: "solid" | "dashed";
+    width?: number;
+    color?: string;
+  } | undefined = (() => {
+    if (state.doc === null) return undefined;
+    if (state.selectedEdgeId !== null) {
+      const found = locate(state.doc.root, state.selectedEdgeId);
+      if (found === undefined) return undefined;
+      const node = found.node;
+      return {
+        kind: "tree" as const,
+        id: node.id,
+        ...(node.edgeStyle !== undefined ? { style: node.edgeStyle } : {}),
+        ...(node.edgeWidth !== undefined ? { width: node.edgeWidth } : {}),
+        ...(node.edgeColor !== undefined ? { color: node.edgeColor } : {}),
+      };
+    }
+    if (state.selectedFreeLinkId !== null) {
+      const link = (state.doc.links ?? []).find((item) => item.id === state.selectedFreeLinkId);
+      if (link === undefined) return undefined;
+      return {
+        kind: "free",
+        id: link.id,
+        ...(link.style !== undefined ? { style: link.style } : {}),
+        ...(link.width !== undefined ? { width: link.width } : {}),
+        ...(link.color !== undefined ? { color: link.color } : {}),
+      };
+    }
+    return undefined;
+  })();
+
   const styleTarget = React.useMemo(() => {
     if (state.doc === null || state.selectedId === null) return undefined;
     const trail = pathTo(state.doc.root, state.selectedId);
@@ -108,7 +147,24 @@ function MindMapApp({ store }: { store: MindmapStore }): React.ReactElement {
              * 导图一深就得上下滚；抽屉只占宽度，画布高度不变。
              * 两个都在右侧，所以用同一列顺序摆放，窄屏时自动上下堆叠。
              */}
-            {styleTarget !== undefined && state.styleOpen ? (
+            {/*
+             * 连线属性抽屉：选中线时优先显示（此时用户的意图是改线，
+             * 而不是改节点的外观）。
+             */}
+            {edgeTarget !== undefined && !(state.styleOpen && styleTarget !== undefined) ? (
+              <div className="mm-split-side mm-split-style" data-mm-side="edge-style">
+                <EdgePanel
+                  store={store}
+                  state={state}
+                  kind={edgeTarget.kind}
+                  targetId={edgeTarget.id}
+                  style={edgeTarget.style}
+                  width={edgeTarget.width}
+                  color={edgeTarget.color}
+                />
+              </div>
+            ) : null}
+            {styleTarget !== undefined && state.styleOpen && edgeTarget === undefined ? (
               <div className="mm-split-side mm-split-style" data-mm-side="style">
                 <StylePanel
                   store={store}

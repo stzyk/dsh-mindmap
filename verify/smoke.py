@@ -2022,7 +2022,7 @@ def main() -> int:
                 json.dumps(geo),
             )
             record(
-                "5l4",
+                "5l4b",
                 "抽屉高度占满（不再挤占画布高度）",
                 geo is not None and abs(geo["h"] - geo["canvasH"]) <= 2,
                 f"抽屉高={geo['h'] if geo else None} 画布高={geo['canvasH'] if geo else None}",
@@ -2805,7 +2805,18 @@ def main() -> int:
                 return next((x for x in tree() if x["id"] == id_), None)
 
             # --- 1. 双击连线加文字 ---
-            page.locator('[data-mm-link-to="eg-a"]').dblclick(force=True)
+            # 直接派发两次 pointerdown/up：曲线的包围盒中心并不在描边上，
+            # 按坐标点很容易落到别的元素上（实测就是这样漏掉的）
+            page.evaluate("""() => {
+                const el = document.querySelector('[data-mm-link-to="eg-a"]');
+                const r = el.getBoundingClientRect();
+                const x = r.x + r.width / 2;
+                const y = r.y + r.height / 2;
+                for (let i = 0; i < 2; i++) {
+                    el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: x, clientY: y, pointerId: 1, button: 0, isPrimary: true}));
+                    el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: x, clientY: y, pointerId: 1, button: 0, isPrimary: true}));
+                }
+            }""")
             page.wait_for_timeout(700)
             has_editor = page.locator('.mm-edge-input').count() > 0
             record("5q0", "双击连线出现文字编辑框", has_editor)
@@ -3952,7 +3963,13 @@ def main() -> int:
             st = edge_state()
             record("5z0", "点击连线可以选中这条边", st["edge"] == "zz-a", json.dumps(st))
             record("5z1", "选中的连线会高亮", st["selectedStroke"] is True, json.dumps(st))
-            record("5z2", "点击连线直接出现文字编辑框", st["input"] is True, json.dumps(st))
+            # v0.29.0：单击只选中，不弹输入框（避免挡住线本身、误触发）
+            record("5z2", "单击连线只选中，不弹文字输入框", st["input"] is False, json.dumps(st))
+            # 双击才打开文字编辑
+            page.mouse.dblclick(a["x"] - 12, a["y"] + a["height"] / 2)
+            page.wait_for_timeout(900)
+            st2 = edge_state()
+            record("5z2b", "双击连线出现文字编辑框", st2["input"] is True, json.dumps(st2))
             record(
                 "5z3",
                 "选中连线后两端手柄与删除按钮都出现",
@@ -3960,8 +3977,8 @@ def main() -> int:
                 json.dumps(st),
             )
 
-            # 编辑文字
-            if st["input"]:
+            # 编辑文字（双击后输入框已打开）
+            if st2["input"]:
                 page.fill(".mm-edge-input", "点线编辑的文字")
                 page.keyboard.press("Enter")
                 page.wait_for_timeout(900)

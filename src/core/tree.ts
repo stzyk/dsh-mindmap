@@ -46,6 +46,10 @@ export interface MindNode {
    * 连到父节点那条线的样式。不填 = 跟随文档默认（`MindDoc.linkStyle`）。
    */
   edgeStyle?: "solid" | "dashed";
+  /** 连到父节点那条线的粗细（1 / 2 / 3），缺省 1.5。 */
+  edgeWidth?: number;
+  /** 连到父节点那条线的颜色（hex），缺省跟随主题。 */
+  edgeColor?: string;
   /**
    * 节点种类：主题 / 子节点。
    *
@@ -157,6 +161,10 @@ export interface MindLink {
    * "自己拉出来的线为什么是虚线，而且改不了"——所以也给样式开关。
    */
   style?: "solid" | "dashed";
+  /** 线宽。 */
+  width?: number;
+  /** 线色（hex）。 */
+  color?: string;
 }
 
 /** 一份导图文档。 */
@@ -299,6 +307,12 @@ export function normalizeNode(input: unknown, budget = { left: MAX_NODES }, dept
   if (raw.detached === true) node.detached = true;
   if (raw.kind === "theme" || raw.kind === "node") node.kind = raw.kind;
   if (raw.edgeStyle === "solid" || raw.edgeStyle === "dashed") node.edgeStyle = raw.edgeStyle;
+  if (typeof raw.edgeWidth === "number" && Number.isFinite(raw.edgeWidth) && raw.edgeWidth > 0 && raw.edgeWidth <= 6) {
+    node.edgeWidth = raw.edgeWidth;
+  }
+  if (typeof raw.edgeColor === "string" && /^#[0-9a-fA-F]{3,8}$/.test(raw.edgeColor.trim())) {
+    node.edgeColor = raw.edgeColor.trim();
+  }
   // 坐标只接受两个有限数；越界（比如手改文件写成 1e9）直接丢弃，回自动布局，
   // 否则节点会跑到画布外面再也没法点回来。
   const pos = raw.position as { x?: unknown; y?: unknown } | null | undefined;
@@ -496,6 +510,8 @@ export function cloneNode(node: MindNode): MindNode {
   if (node.detached === true) copy.detached = true;
   if (node.kind !== undefined) copy.kind = node.kind;
   if (node.edgeStyle !== undefined) copy.edgeStyle = node.edgeStyle;
+  if (node.edgeWidth !== undefined) copy.edgeWidth = node.edgeWidth;
+  if (node.edgeColor !== undefined) copy.edgeColor = node.edgeColor;
   if (node.position !== undefined) copy.position = { x: node.position.x, y: node.position.y };
   if (node.images !== undefined && node.images.length > 0) copy.images = node.images.map((image) => ({ ...image }));
   if (node.style !== undefined) copy.style = { ...node.style };
@@ -1336,6 +1352,12 @@ export function normalizeLinks(input: unknown, root: MindNode): MindLink[] | und
     const base: MindLink = { id, from, to };
     if (label.length > 0) base.label = label;
     if (style !== undefined) base.style = style;
+    if (typeof raw.width === "number" && Number.isFinite(raw.width) && raw.width > 0 && raw.width <= 6) {
+      base.width = raw.width;
+    }
+    if (typeof raw.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(raw.color.trim())) {
+      base.color = raw.color.trim();
+    }
     out.push(base);
   }
   return out.length > 0 ? out : undefined;
@@ -1699,4 +1721,66 @@ export function attachByLink(
     return ay - by;
   });
   return { root: next, childId, parentId };
+}
+
+/** 连线的可调属性。 */
+export interface EdgePatch {
+  style?: "solid" | "dashed" | undefined;
+  width?: number | undefined;
+  color?: string | undefined;
+}
+
+/**
+ * 批量设置某条连线（= 某节点的入边）的属性。
+ *
+ * @returns 新树；节点不存在或没有入边时返回 undefined。
+ */
+export function setEdgeAttrs(root: MindNode, id: string, patch: EdgePatch): MindNode | undefined {
+  const next = cloneNode(root);
+  const target = locate(next, id);
+  if (target === undefined) return undefined;
+  if (target.parent === undefined) return undefined;
+  const node = target.node;
+  if ("style" in patch) {
+    if (patch.style === undefined) delete node.edgeStyle;
+    else node.edgeStyle = patch.style;
+  }
+  if ("width" in patch) {
+    if (patch.width === undefined) delete node.edgeWidth;
+    else node.edgeWidth = patch.width;
+  }
+  if ("color" in patch) {
+    if (patch.color === undefined) delete node.edgeColor;
+    else node.edgeColor = patch.color;
+  }
+  return next;
+}
+
+/** 批量设置某条自由连线的属性。 */
+export function setLinkAttrs(
+  links: readonly MindLink[] | undefined,
+  id: string,
+  patch: EdgePatch,
+): MindLink[] | undefined {
+  if (links === undefined) return undefined;
+  let hit = false;
+  const next = links.map((link) => {
+    if (link.id !== id) return link;
+    hit = true;
+    const copy: MindLink = { ...link };
+    if ("style" in patch) {
+      if (patch.style === undefined) delete copy.style;
+      else copy.style = patch.style;
+    }
+    if ("width" in patch) {
+      if (patch.width === undefined) delete copy.width;
+      else copy.width = patch.width;
+    }
+    if ("color" in patch) {
+      if (patch.color === undefined) delete copy.color;
+      else copy.color = patch.color;
+    }
+    return copy;
+  });
+  return hit ? next : undefined;
 }
