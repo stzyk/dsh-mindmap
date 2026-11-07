@@ -1966,10 +1966,11 @@ img.mm-node-img { cursor: zoom-in; }
 
 /* ── 自由连线（关系线） ─────────────────────────────── */
 /*
- * 和父子连线用不同线型区分：实线 = 层级结构，虚线 = 我另外标的关联。
+ * 线型由 data-style 决定（默认实线）。
+ * 这里**不能再写死 stroke-dasharray**：文件里曾经有两份 .mm-free-link 规则，
+ * 后一份把线型钉成虚线，导致改样式看起来"没生效"。
  */
 .mm-free-link {
-  stroke-dasharray: 6 4;
   opacity: .85;
 }
 .mm-free-link[data-selected="true"] {

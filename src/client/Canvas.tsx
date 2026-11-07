@@ -2214,7 +2214,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                       />
                       <text
                         className="mm-edge-style-opt"
-                        data-active={(link.style ?? doc.linkStyle ?? "solid") === "solid" ? "true" : undefined}
+                        data-active={(link.style ?? "solid") === "solid" ? "true" : undefined}
                         x={22}
                         y={14}
                         onClick={() => store.setEdgeStyle(link.toId, "solid")}
@@ -2223,7 +2223,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                       </text>
                       <text
                         className="mm-edge-style-opt"
-                        data-active={(link.style ?? doc.linkStyle ?? "solid") === "dashed" ? "true" : undefined}
+                        data-active={(link.style ?? "solid") === "dashed" ? "true" : undefined}
                         x={64}
                         y={14}
                         onClick={() => store.setEdgeStyle(link.toId, "dashed")}
@@ -2292,7 +2292,14 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
               <path
                 className="mm-link mm-free-link"
                 data-selected={state.selectedFreeLinkId === link.id ? "true" : undefined}
-                data-style={link.style ?? doc.linkStyle ?? "solid"}
+                /*
+                 * 自由连线默认**实线**，不跟随文档默认。
+                 *
+                 * 文档默认是给父子连线用的；关系线如果跟着变，用户改过一次
+                 * 父子连线的线型，所有关系线也会莫名其妙变掉
+                 * （用户报的"选中状态下会变成虚线"就是这么来的）。
+                 */
+                data-style={link.style ?? "solid"}
                 d={d}
               />
               <path
@@ -2327,7 +2334,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                   <rect className="mm-edge-style-bg" x={0} y={0} width={86} height={20} rx={10} />
                   <text
                     className="mm-edge-style-opt"
-                    data-active={(link.style ?? doc.linkStyle ?? "solid") === "solid" ? "true" : undefined}
+                    data-active={(link.style ?? "solid") === "solid" ? "true" : undefined}
                     x={22}
                     y={14}
                     onClick={() => store.setFreeLinkStyle(link.id, "solid")}
@@ -2336,7 +2343,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
                   </text>
                   <text
                     className="mm-edge-style-opt"
-                    data-active={(link.style ?? doc.linkStyle ?? "solid") === "dashed" ? "true" : undefined}
+                    data-active={(link.style ?? "solid") === "dashed" ? "true" : undefined}
                     x={64}
                     y={14}
                     onClick={() => store.setFreeLinkStyle(link.id, "dashed")}
