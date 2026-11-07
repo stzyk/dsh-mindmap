@@ -544,6 +544,31 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
           description: "导图标题（模糊匹配）；和 id 二选一",
         };
 
+        /**
+         * "找不到这份导图"的统一提示。
+         *
+         * 实测模型最常见的错误是把**根节点 id**（`n-...`）当成导图 id 传进来
+         * （`doc-...` 才是导图 id）。只回一句"找不到"它会重试同样的参数，
+         * 所以这里直接把区别点出来。
+         */
+        const notFoundHint = (rawId: unknown): string => {
+          const id = typeof rawId === "string" ? rawId.trim() : "";
+          /*
+           * 导图 id 一律是 doc- 开头。传进来的不是 doc- 开头，基本就是
+           * 把节点 id（n0 / n-mw...）当成了导图 id —— 实测模型这么错了两轮，
+           * 只回一句"找不到"它会拿同样的参数再试一次。
+           */
+          if (id.length > 0 && !id.startsWith("doc-")) {
+            return (
+              "找不到这份导图：" +
+              id +
+              "。这里的 id 要传导图 id（doc- 开头，mindmap_list 每行方括号里那个）；" +
+              "节点 id（n 开头）不能当导图 id 用。"
+            );
+          }
+          return "找不到这份导图" + (id.length > 0 ? "：" + id : "") + "。先调用 mindmap_list 看看有哪些。";
+        };
+
         const register = (
           name: string,
           description: string,
@@ -630,7 +655,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
               typeof args.id === "string" ? args.id : undefined,
               typeof args.title === "string" ? args.title : undefined,
             );
-            if (found === undefined) return "找不到这份导图。先调用 mindmap_list 看看有哪些。";
+            if (found === undefined) return notFoundHint(args.id);
             const doc = store.get(found.id);
             if (doc === undefined) return "找不到这份导图。";
             return "# " + doc.title + "\n\n" + outlineOf(doc.root);
@@ -660,7 +685,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
 
         register(
           "mindmap_update",
-          "增量修改一份思维导图。先 mindmap_read 拿节点 id，再用 ops 描述改动。",
+          "增量修改一份思维导图。先 mindmap_read 拿节点 id，再用 ops 描述改动（add / update / remove / move / reparent，按顺序执行；任一操作失败则整次修改不生效）。",
           {
             id: docParam,
             title: titleParam,
@@ -675,11 +700,18 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
                   op: {
                     type: "string",
                     required: true,
-                    description: "add（加子节点）/ update（改文字）/ remove（删节点）/ move（上下挪）",
+                    description:
+                      "add（加子节点）/ update（改文字）/ remove（删节点及其子树）/ move（同级上下挪）/ reparent（挂到另一个节点下）",
                   },
                   id: { type: "string", description: "目标节点 id；add 时是父节点" },
                   text: { type: "string", description: "add / update 的文字" },
                   direction: { type: "string", description: "move 的方向：up / down" },
+                  parent: { type: "string", description: "reparent 的新父节点 id" },
+                  as: {
+                    type: "string",
+                    description:
+                      "add 时可给新节点起一个本批次内的临时名字，后面的操作直接引用它（新节点 id 是随机的，调用前拿不到）",
+                  },
                 },
               },
             },
@@ -692,7 +724,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
               typeof args.id === "string" ? args.id : undefined,
               typeof args.title === "string" ? args.title : undefined,
             );
-            if (found === undefined) return "找不到这份导图。先调用 mindmap_list。";
+            if (found === undefined) return notFoundHint(args.id);
             const doc = store.get(found.id);
             if (doc === undefined) return "找不到这份导图。";
             const ops = Array.isArray(args.ops) ? (args.ops as MindOp[]) : [];
@@ -700,7 +732,33 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
             const result = applyOps(doc.root, ops);
             if ("error" in result) return "修改失败：" + result.error;
             await store.save({ ...doc, root: result.root });
-            return "已应用 " + String(result.applied) + " 个操作。当前结构：\n\n" + outlineOf(result.root);
+            /*
+             * 把新节点的 id 一起回给模型。
+             *
+             * 没有这一步的话，"加 10 个章节、再给每个章节加子节点"必须
+             * 中间插一次 mindmap_read 才能拿到 id —— 多一轮对话，而且
+             * 模型很容易凭印象编 id（实测过）。
+             */
+            const createdLine =
+              result.created.length === 0
+                ? ""
+                : "\n新节点：" +
+                  result.created
+                    .slice(0, 30)
+                    .map(
+                      (node) =>
+                        node.text + " [" + node.id + "]" + (node.as === undefined ? "" : "（别名 " + node.as + "）"),
+                    )
+                    .join("、") +
+                  (result.created.length > 30 ? " 等 " + String(result.created.length) + " 个" : "");
+            return (
+              "已应用 " +
+              String(result.applied) +
+              " 个操作。" +
+              createdLine +
+              "\n\n当前结构：\n\n" +
+              outlineOf(result.root)
+            );
           },
         );
       }

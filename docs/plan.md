@@ -1234,6 +1234,47 @@ v0.24.0 只做到"kind 与结构一致"，但**面板点「子节点」仍然没
 打出去，落到了空白处，表现就是"双击节点却多出一个主题"（冒烟 5b/5c/5w4/5w5 连挂）。
 现在按 `styleOpen` 决定留 320 还是 40。
 
+### 4.2aw 工具层事故：一条 remove 洗掉 102 个节点（v0.35.0）
+
+**现场**：另一个会话（`session-9acd3e00`）里模型用 `mindmap_update` 改一张 102 节点的图，
+一条 `remove` 之后整张图只剩根节点，之后所有 `add` 都报
+`Cannot read properties of undefined (reading 'length')` / `node.children is not iterable`。
+
+**根因**：四个操作分支都写了 `current = next`，但它们的返回约定并不一样——
+
+| 函数 | 返回 |
+|---|---|
+| `insertChild` / `insertSibling` | `{ root, id }` |
+| `removeNode` | `{ root, focusId }` |
+| `setText` / `moveSibling` / `reparentNode` | `MindNode` |
+
+于是 add / remove 把**包装对象**当成了树往下传：下一个操作读到 `node.children`
+是 `undefined` 直接抛错；更致命的是 `store.save({ root: 包装对象 })` 落盘时，
+`normalizeNode` 把包装对象修成一个"没有子节点的新根"——**整棵子树当场蒸发**。
+根节点 id 每次保存都变（`n-mw67ccln-46t` → `n-mw67dgik-6id`）也是同一个原因。
+
+**为什么没被拦住**：工具层（`applyOps` / `treeFromMarkdown` / `outlineOf`）
+**一行测试都没有**。画布上的任何交互都不经过它，浏览器冒烟永远测不到。
+
+**修法**：
+
+1. 结构类操作统一取 `.root`，并且每一步都用 `asNode()` 校验结果确实是节点
+   （有 `id` 且 `children` 是数组）——**宁可这次改不成，也不能把树写坏**；
+2. 补 `scripts/test-tools.mjs`（40 项）：四条结构操作、批内串联、失败不落盘、
+   纯函数不改入参、Markdown 建树的根、`outlineOf` 的 id 可用性、`toJsonSchema` 契约；
+3. 门禁加一条：`package.json` 的 `test` 必须包含 `test-tools.mjs`，防止再次漏测。
+
+#### 同一轮实测暴露的其它三个问题
+
+| 问题 | 现象 | 修法 |
+|---|---|---|
+| `# 标题` 建出重复节点 | `mindmap_create` 后是"标题根 → 同名子节点 → 各章节" | 只有一个 depth 0 条目时它**就是根**；多个才用合成根 |
+| 批内无法前向引用 | "给甲加子节点、再把它挂到乙下"必须拆成两次调用（新 id 随机，调用前不知道） | `add` 支持 `as` 别名，同一批 ops 里后续操作直接引用 |
+| 报错文案误导 | 传不存在的节点 id 去 remove，报"根节点不可删"；传节点 id 当导图 id，只回"找不到" | 先判存在性再判语义；`id` 不是 `doc-` 开头时直接说清两套 id 的区别 |
+
+**教训**：只要一段代码"只有模型会走"，它就等于没有测试覆盖——而模型不会像人
+一样绕开坑，它会把坑踩成数据事故。工具层必须有自己的单测。
+
 ### 4.3 过程中发现并修复的真实缺陷
 
 | # | 缺陷 | 怎么发现的 | 修复 |

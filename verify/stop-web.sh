@@ -16,17 +16,17 @@ if [ -f "$PIDFILE" ]; then
       sleep 0.2
     done
     kill -9 "$PID" 2>/dev/null
-    echo "[stop-web] 已停止 PID=$PID"
+    echo "[stop-web] 已停止 PID=${PID}"
   else
-    echo "[stop-web] PID=$PID 已经不在跑了"
+    echo "[stop-web] PID=${PID} 已经不在跑了"
   fi
   rm -f "$PIDFILE"
 else
-  echo "[stop-web] 没有 $PIDFILE，跳过"
+  echo "[stop-web] 没有 ${PIDFILE}，跳过"
 fi
 
 # 端口还占着就报出来，不静默
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "[stop-web] 警告：端口 $PORT 仍被占用" >&2
+  echo "[stop-web] 警告：端口 ${PORT} 仍被占用" >&2
   lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2
 fi

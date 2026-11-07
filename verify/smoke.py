@@ -197,6 +197,26 @@ class Page:
         self.page.click('[data-mm-action="hide-md"]')
         self.page.wait_for_timeout(500)
 
+    def click_blank_canvas(self) -> None:
+        """点画布空白处（取消选中 / 抢焦点）。
+
+        为什么不用 `.mm-canvas` + position(5,5)：那个 div 是**内容层**，
+        它有自己的坐标原点（外面还有 4000px 虚拟留白），(5,5) 经常落在
+        视口外，Playwright 会为了点它去滚动，而应用自己的滚动逻辑又在往回拉，
+        于是"元素一直不稳定"→ 30 秒超时（实测偶发）。点视口本身就没有这问题。
+        """
+        box = self.page.locator(".mm-canvas-wrap").bounding_box()
+        if box is None:
+            self.page.locator(".mm-canvas-wrap").click(position={"x": 6, "y": 6})
+        else:
+            # 左上角一定是空白（内容居中排布），而且不会被右侧属性抽屉盖住
+            self.page.mouse.click(box["x"] + 8, box["y"] + 8)
+        # 点视口**不会**把焦点给画布（tabindex=0 在 .mm-canvas 上，它是另一层），
+        # 而撤销/重做这些快捷键靠画布上的键盘监听——不显式聚焦，
+        # 后面按 Ctrl+Z 会打空（实测：同一条用例时红时绿）
+        self.page.evaluate("() => document.querySelector('.mm-canvas')?.focus()")
+        self.page.wait_for_timeout(150)
+
     def style_panel_open(self) -> bool:
         """属性抽屉当前是否可见（节点属性或连线属性都算）。"""
         return self.page.locator('[data-mm-side="style"], [data-mm-side="edge-style"]').count() > 0
@@ -362,7 +382,7 @@ def main() -> int:
             # 点中心节点选中 → Enter 加同级（根节点的兄弟会变成子节点）
             page.locator(".mm-node").first.click()
             page.wait_for_timeout(300)
-            page.locator(".mm-canvas").first.click(position={"x": 5, "y": 5})
+            pg.click_blank_canvas()
             page.wait_for_timeout(200)
             page.locator(".mm-node").first.click()
             page.keyboard.press("Enter")
@@ -1018,7 +1038,7 @@ def main() -> int:
             )
 
             # --- 键盘快捷键 ---
-            page.locator(".mm-canvas").first.click(position={"x": 5, "y": 5})
+            pg.click_blank_canvas()
             page.wait_for_timeout(300)
             kbd_before = tree_sig()
             page.keyboard.press("Control+z")
@@ -1041,7 +1061,7 @@ def main() -> int:
             )
 
             # --- 连续多步撤销 ---
-            page.locator(".mm-canvas").first.click(position={"x": 5, "y": 5})
+            pg.click_blank_canvas()
             page.wait_for_timeout(200)
             baseline = tree_sig()
             for _ in range(3):
@@ -1244,7 +1264,7 @@ def main() -> int:
             page.keyboard.type("分支乙"); page.keyboard.press("Enter"); page.wait_for_timeout(600)
             page.keyboard.press("Escape"); page.wait_for_timeout(600)
             # 键盘操作完再点一次画布空白处，确保焦点回来
-            page.locator(".mm-canvas").first.click(position={"x": 5, "y": 5})
+            pg.click_blank_canvas()
             page.wait_for_timeout(400)
 
             # --- 打开侧栏 ---

@@ -4,6 +4,7 @@
  * 用法：npm run gates
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -151,6 +152,26 @@ check(
   "面板 id 与侧边栏图标 id 一致",
   /PANEL_ID\s*=\s*"mindmap"/.test(clientSrc),
   "PANEL_ID 必须是 main 的 key 且等于 sidebar.panellist 的 id",
+);
+
+// ── 5a. 模型工具层必须有自己的单测 ────────────────────────
+// v0.34.0 的 applyOps 把 {root,id} 当成了树，一条 remove 洗掉 102 个节点。
+// 画布交互一个都不经过工具层，浏览器冒烟永远测不到它，所以必须有单测。
+check(
+  "package.json: test 脚本包含 test-tools.mjs",
+  String(pkg.scripts?.test ?? "").includes("test-tools.mjs"),
+  "工具层（applyOps / treeFromMarkdown）必须有单测，否则改坏了没人发现",
+);
+check(
+  "工具层测试文件存在",
+  existsSync(resolve(root, "scripts/test-tools.mjs")),
+);
+// 结构类操作必须取 .root：insertChild/insertSibling/removeNode 返回的是包装对象
+const toolsSrc = await readFile(resolve(root, "src/tools.ts"), "utf8");
+check(
+  "applyOps 对结构类操作取 .root（不再把包装对象当树）",
+  /current = node;/.test(toolsSrc) && /asNode\(next\.root\)/.test(toolsSrc),
+  "add/remove 的返回值是 { root, id }，必须取 .root 并校验是节点",
 );
 
 // ── 5b. 属性面板是显式开关（v0.34.0 用户要求） ────────────
