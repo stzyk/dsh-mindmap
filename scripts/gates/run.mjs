@@ -23,6 +23,9 @@ const patch = await readFile(resolve(root, "cordis.patch.yml"), "utf8");
 const hostBundle = await readFile(resolve(root, "lib/index.js"), "utf8");
 const clientBundle = await readFile(resolve(root, "lib/client.js"), "utf8");
 const clientSrc = await readFile(resolve(root, "src/client/index.tsx"), "utf8");
+const storeSrc = await readFile(resolve(root, "src/client/store.ts"), "utf8");
+const canvasSrc = await readFile(resolve(root, "src/client/Canvas.tsx"), "utf8");
+const stylesSrc = await readFile(resolve(root, "src/client/styles.ts"), "utf8");
 
 // ── 1. package.json 合同 ──────────────────────────────────
 check("package.json: type=module", pkg.type === "module");
@@ -148,6 +151,53 @@ check(
   "面板 id 与侧边栏图标 id 一致",
   /PANEL_ID\s*=\s*"mindmap"/.test(clientSrc),
   "PANEL_ID 必须是 main 的 key 且等于 sidebar.panellist 的 id",
+);
+
+// ── 5b. 属性面板是显式开关（v0.34.0 用户要求） ────────────
+// 用户要求：点节点、点连线**不再**自动弹属性面板，改用工具栏的「属性」按钮。
+// 判据：select() 的函数体里不许出现 styleOpen。
+const selectBody = (() => {
+  const start = storeSrc.indexOf("    select(id) {");
+  if (start < 0) return null;
+  const end = storeSrc.indexOf("\n    },", start);
+  return end < 0 ? null : storeSrc.slice(start, end);
+})();
+// 选中可以**收起**面板（点空白/Esc），但绝不能再**打开**它。
+const selectOpensPanel =
+  selectBody !== null &&
+  /styleOpen\s*:\s*true|styleOpen\s*:\s*(id|ids|unique|next|result)\b|styleOpen\s*:\s*[a-z]+\.length/.test(
+    selectBody,
+  );
+check(
+  "store: 选中不再自动打开属性面板",
+  selectBody !== null && !selectOpensPanel,
+  "select() 里又自动打开了 styleOpen —— 面板必须只由「属性」按钮打开（取消选中时可以收起）",
+);
+check(
+  "store: 有 toggleStyle 开关",
+  /toggleStyle\(\)\s*{/.test(storeSrc) && storeSrc.includes("state.styleOpen"),
+);
+check(
+  "工具栏有「属性」按钮",
+  canvasSrc.includes('data-mm-action="style"') && canvasSrc.includes("store.toggleStyle()"),
+);
+check(
+  "属性面板内容跟随选中（连线优先于节点）",
+  clientSrc.includes('data-mm-side="edge-style"') && clientSrc.includes('data-mm-side="style"'),
+);
+
+// ── 5c. 连线端点手柄不画圆圈（v0.34.0 用户要求） ──────────
+// 元素要留着（拖端点改接的唯一入口），但外观必须透明。
+const handleRule = (() => {
+  const i = stylesSrc.indexOf(".mm-edge-handle {");
+  if (i < 0) return null;
+  const j = stylesSrc.indexOf("}", i);
+  return j < 0 ? null : stylesSrc.slice(i, j);
+})();
+check(
+  "端点手柄透明（不再画线头线尾的圆圈）",
+  handleRule !== null && handleRule.includes("fill: transparent") && !handleRule.includes("stroke: var("),
+  "手柄必须保留元素、只去掉外观：fill 写 none 会连指针事件一起失效",
 );
 
 // ── 6. React 未被打进 client bundle ──────────────────────

@@ -3,7 +3,7 @@
 
 覆盖的验收项：
 
-  1  侧边栏出现「思维导图」图标
+  1  右侧抽屉首页的「思维导图」卡片能打开导图（入口与图像工作台一致）
   2  点图标进到面板，空态可见
   3  新建一份导图 → 画布出中心节点
   4  键盘流：Enter 加同级 / Tab 缩进 / 方向键移动
@@ -34,7 +34,9 @@ results: list[dict] = []
 
 
 def record(key: str, name: str, ok: bool, detail: str = "") -> None:
-    results.append({"key": key, "name": name, "ok": bool(ok), "detail": detail})
+    # detail 可能是 None（有些断言只在失败时才拼说明），统一转成字符串：
+    # 收尾打印时会直接拼接，None 会让整个汇总崩掉（踩过）
+    results.append({"key": key, "name": name, "ok": bool(ok), "detail": "" if detail is None else str(detail)})
     mark = "PASS  " if ok else "FAIL  "
     print(mark + key + " " + name + ("  —— " + detail if detail else ""), flush=True)
 
@@ -114,10 +116,8 @@ class Page:
         self.page.wait_for_selector(".mm-node", timeout=20000)
         self.page.wait_for_timeout(900)
 
-    def open_panel(self) -> str:
-        """点侧边栏的「思维导图」图标。返回使用的定位方式。"""
-        # 隔离实例（独立 DSH_HOME）刷新后会再次弹出 "Get started"，
-        # 它的遮罩会挡住侧边栏。每次打开面板前先尝试关掉，没有就是 no-op。
+    def dismiss_overlays(self) -> None:
+        """关掉隔离实例的 "Get started" 遮罩（没有就是 no-op）。"""
         try:
             self.page.evaluate("""() => {
                 const m = document.querySelector('._mask_o6lrb_18');
@@ -128,21 +128,105 @@ class Page:
             self.page.wait_for_timeout(400)
         except Exception:
             pass
-        # 侧边栏面板行的 aria-label 就是面板 label
-        candidates = [
-            self.page.get_by_role("button", name="思维导图", exact=True),
-            self.page.locator('[aria-label="思维导图"]'),
-            self.page.locator("button", has_text="思维导图"),
-        ]
-        for locator in candidates:
-            try:
-                if locator.count() > 0:
-                    locator.first.click(timeout=6000)
-                    self.page.wait_for_timeout(1200)
-                    return str(locator)
-            except Exception:
-                continue
-        raise RuntimeError("侧边栏找不到「思维导图」入口")
+
+    def open_panel(self) -> str:
+        """从**右侧抽屉首页的卡片**打开导图。返回使用的入口。
+
+        入口是右侧抽屉首页那张「思维导图」卡片（和「图像工作台」同一个机制，
+        见 src/client/aiTab.ts 的 guide）。左侧边栏不再是入口：那是"切换到某个
+        主面板"的语义，会占满主区域、把会话界面换掉，而导图要和对话并存。
+
+        兜底：插件暴露的 window.__dshSidebarRight.openTab("mindmap")
+        （抽屉首页被别的 tab 占着时，卡片是看不到的）。
+        """
+        self.dismiss_overlays()
+
+        if self.page.locator("[data-mm-root]").count() > 0:
+            return "已经打开"
+
+        # 右侧抽屉默认可能是收起的：先确保它展开，否则卡片不可见。
+        for _ in range(3):
+            if self.page.locator("text=和对话一起用").count() > 0:
+                break
+            clicked = False
+            for label in ["打开右侧边栏", "收起右侧边栏"]:
+                loc = self.page.locator('[aria-label="' + label + '"]')
+                if loc.count() > 0:
+                    try:
+                        loc.first.click(timeout=6000)
+                        self.page.wait_for_timeout(1300)
+                        clicked = True
+                    except Exception:
+                        clicked = False
+                    break
+            if not clicked:
+                break
+
+        card = self.page.locator("text=和对话一起用")
+        if card.count() > 0:
+            card.first.click(timeout=8000)
+            self.page.wait_for_timeout(1500)
+            self.page.wait_for_selector(".mm-root", timeout=15000)
+            return "右侧抽屉首页卡片"
+
+        self.page.evaluate("() => window.__dshSidebarRight.openTab('mindmap')")
+        self.page.wait_for_timeout(1500)
+        self.page.wait_for_selector(".mm-root", timeout=15000)
+        return '__dshSidebarRight.openTab("mindmap")'
+
+    def markdown_open(self) -> bool:
+        """Markdown 侧栏当前是否可见。"""
+        return self.page.locator('[data-mm-panel="markdown"]').count() > 0
+
+    def ensure_markdown(self) -> bool:
+        """确保 Markdown 侧栏是**打开**的（点按钮是 toggle，重复点会关掉）。"""
+        if self.markdown_open():
+            return True
+        self.page.click('[data-mm-action="markdown"]')
+        try:
+            self.page.wait_for_selector('[data-mm-panel="markdown"]', timeout=15000)
+        except Exception:
+            return False
+        self.page.wait_for_timeout(400)
+        return True
+
+    def close_markdown(self) -> None:
+        """确保 Markdown 侧栏是**关着**的（把画布宽度还原）。"""
+        if not self.markdown_open():
+            return
+        self.page.click('[data-mm-action="hide-md"]')
+        self.page.wait_for_timeout(500)
+
+    def style_panel_open(self) -> bool:
+        """属性抽屉当前是否可见（节点属性或连线属性都算）。"""
+        return self.page.locator('[data-mm-side="style"], [data-mm-side="edge-style"]').count() > 0
+
+    def ensure_style(self) -> bool:
+        """确保属性抽屉是开着的。
+
+        v0.34.0 起面板**不再随选中自动打开**（用户要求），所以凡是要操作
+        面板内容的用例都得先点一下工具栏的「属性」按钮。
+        调用前要先选中对象，否则按钮只会提示"先选一个节点或连线"。
+        """
+        if self.style_panel_open():
+            return True
+        btn = self.page.locator('[data-mm-action="style"]')
+        if btn.count() == 0:
+            return False
+        btn.first.click()
+        self.page.wait_for_timeout(600)
+        return self.style_panel_open()
+
+    def close_style(self) -> None:
+        """关掉属性抽屉（面板上的 × 或工具栏按钮都行）。"""
+        if not self.style_panel_open():
+            return
+        close = self.page.locator('[data-mm-action="style-close"]')
+        if close.count() > 0:
+            close.first.click()
+        else:
+            self.page.click('[data-mm-action="style"]')
+        self.page.wait_for_timeout(500)
 
 
 def main() -> int:
@@ -204,7 +288,7 @@ def main() -> int:
 
         try:
             locator_used = pg.open_panel()
-            record("1", "侧边栏图标可点开「思维导图」面板", True, locator_used[:120])
+            record("1", "右侧抽屉首页的卡片能打开「思维导图」", True, locator_used[:120])
 
             # 面板打开后才有 window.__mindmap，此时才能读到既有文档。
             # （早先放在打开面板之前采集，异常被吞掉 -> 当成"列表为空"
@@ -223,7 +307,7 @@ def main() -> int:
                 pg.foreign_ok = False
                 print(f"WARN  无法识别既有文档，本次不做清理：{exc}", flush=True)
         except Exception as exc:
-            record("1", "侧边栏图标可点开「思维导图」面板", False, str(exc)[:200])
+            record("1", "右侧抽屉首页的卡片能打开「思维导图」", False, str(exc)[:200])
             pg.shot("01-panel-fail")
             return finish(browser, console_errors)
 
@@ -692,7 +776,7 @@ def main() -> int:
                 page.wait_for_timeout(400)
                 # 工具条按钮已移除（v0.15.1）：直接给隐藏的 file input 设文件，
                 # 走的是和"粘贴 / 拖入"完全相同的 addImages 路径
-                page.set_input_files('input[multiple]', fixture)
+                page.set_input_files('[data-mm-file-input="add"]', fixture)
                 page.wait_for_timeout(2500)
 
                 img_count = page.locator(".mm-node-img").count()
@@ -755,7 +839,7 @@ def main() -> int:
                     }""")
                     page.wait_for_timeout(300)
                     # 工具条按钮已移除（v0.15.1）：直接给隐藏的 file input 设文件
-                    page.set_input_files('input[multiple]', fixture)
+                    page.set_input_files('[data-mm-file-input="add"]', fixture)
                     page.wait_for_timeout(2500)
 
                     pure = page.evaluate(
@@ -1002,7 +1086,7 @@ def main() -> int:
             page.evaluate("() => { const s = window.__mindmap.state(); window.__mindmap.select(s.doc.root.id); }")
             page.wait_for_timeout(300)
             # 工具条按钮已移除（v0.15.1）：直接给隐藏的 file input 设文件
-            page.set_input_files('input[multiple]', fixture)
+            page.set_input_files('[data-mm-file-input="add"]', fixture)
             # 等图片真正落到节点上（上传是异步的）
             try:
                 page.wait_for_function(
@@ -1326,8 +1410,20 @@ def main() -> int:
             page.locator(".mm-node").first.click()
             page.wait_for_timeout(700)
 
-            # --- 选中后属性面板出现 ---
-            record("5i0", "选中节点后出现属性面板", page.locator('[data-mm-panel="style"]').count() == 1)
+            # --- 选中**不再**自动弹面板；点「属性」按钮才开（v0.34.0）---
+            record(
+                "5i0a",
+                "选中节点不会自动弹出属性面板",
+                page.locator('[data-mm-panel="style"]').count() == 0
+                and page.evaluate("() => window.__mindmap.state().styleOpen") is False,
+            )
+            record(
+                "5i0b",
+                "工具栏有「属性」按钮",
+                page.locator('[data-mm-action="style"]').count() == 1,
+            )
+            pg.ensure_style()
+            record("5i0", "点「属性」后出现属性面板", page.locator('[data-mm-panel="style"]').count() == 1)
 
             def node_css():
                 return page.evaluate("""() => {
@@ -1460,6 +1556,9 @@ def main() -> int:
 
             page.locator('.mm-node[data-root="true"]').click()
             page.wait_for_timeout(600)
+            # v0.34.0：面板不再随选中自动打开
+            pg.ensure_style()
+            page.wait_for_timeout(400)
             if page.locator('[data-mm-action="style-subtree"]').count() > 0:
                 page.check('[data-mm-action="style-subtree"]')
                 page.wait_for_timeout(300)
@@ -1485,7 +1584,9 @@ def main() -> int:
             # 用调试句柄选中根节点：节点可能被属性面板挤到视口边缘，
             # 按坐标点会不稳（这是测试脚手架的问题，不是功能的）
             page.evaluate("() => { const s = window.__mindmap.state(); window.__mindmap.select(s.doc.root.id); }")
-            page.wait_for_timeout(700)
+            page.wait_for_timeout(600)
+            pg.ensure_style()
+            page.wait_for_timeout(400)
             # 先确认按钮状态，别让 Playwright 干等 30 秒
             btn = page.locator('[data-mm-action="style-reset"]')
             if btn.count() == 0:
@@ -1813,6 +1914,7 @@ def main() -> int:
             )
 
             # --- 属性面板切换为批量模式 ---
+            pg.ensure_style()
             panel_title = page.evaluate("""() => {
                 const el = document.querySelector('[data-mm-panel="style"] .mm-style-target');
                 return el ? el.textContent.trim() : null;
@@ -1956,6 +2058,9 @@ def main() -> int:
         # ---------- 5l 自动保存 / 属性抽屉 / 直接打字 ----------
         try:
             pg.reset_workspace("v08 测试导图")
+            # 上一段（5k 批量）会打开属性抽屉，这里必须收起来：
+            # 抽屉是浮层，会把右侧节点盖住，后面按坐标点节点会一直超时。
+            pg.close_style()
 
             # --- 3. 选中后直接打字即进入编辑 ---
             page.locator('.mm-node[data-root="true"]').click()
@@ -2003,9 +2108,26 @@ def main() -> int:
                 f"节点数={node_count} 编辑态={still_editing}",
             )
 
-            # --- 2. 属性抽屉在右侧 ---
+            # --- 2. 属性抽屉在右侧（v0.34.0：点「属性」按钮才开）---
             page.locator('.mm-node[data-root="true"]').click()
             page.wait_for_timeout(600)
+            record(
+                "5l2b",
+                "选中节点后属性抽屉保持关闭（不再自动弹出）",
+                not pg.style_panel_open()
+                and page.evaluate("() => window.__mindmap.state().styleOpen") is False,
+            )
+            page.click('[data-mm-action="style"]')
+            page.wait_for_timeout(700)
+            record(
+                "5l2c",
+                "点「属性」按钮打开抽屉，且按钮显示按下态",
+                pg.style_panel_open()
+                and page.evaluate(
+                    "() => document.querySelector('[data-mm-action=style]').dataset.primary"
+                )
+                == "true",
+            )
             geo = page.evaluate("""() => {
                 const el = document.querySelector('[data-mm-side="style"]');
                 const main = document.querySelector('.mm-split-main');
@@ -2036,19 +2158,28 @@ def main() -> int:
             )
 
             # 收起抽屉：节点仍选中
-            page.click('[data-mm-action="style-close"]')
+            pg.close_style()
             page.wait_for_timeout(600)
             hidden = page.locator('[data-mm-side="style"]').count() == 0
             still_selected = page.evaluate("() => window.__mindmap.state().selectedId !== null")
             record("5l5", "属性抽屉可以隐藏", hidden)
             record("5l6", "隐藏抽屉不会取消选中", still_selected)
 
-            # 再次选中重新展开
+            # 再次选中**不会**自动展开（这是本次改动的核心）
             page.locator('.mm-node[data-root="true"]').click()
             page.wait_for_timeout(600)
             record(
                 "5l7",
-                "再次选中节点会重新展开抽屉",
+                "关闭后再次选中节点也不会自动展开",
+                page.locator('[data-mm-side="style"]').count() == 0,
+            )
+
+            # 点「属性」重新展开
+            page.click('[data-mm-action="style"]')
+            page.wait_for_timeout(600)
+            record(
+                "5l7b",
+                "点「属性」可以重新展开抽屉",
                 page.locator('[data-mm-side="style"]').count() == 1,
             )
 
@@ -2071,6 +2202,11 @@ def main() -> int:
             if both["style"] and both["md"]:
                 page.click('[data-mm-action="hide-md"]')
                 page.wait_for_timeout(600)
+
+            # 后面要按坐标点节点：属性抽屉是浮层，开着会把右侧节点盖住，
+            # 点击会一直超时（不是功能问题，是挡着了）
+            pg.close_style()
+            page.wait_for_timeout(300)
 
             # --- 1. 自动保存状态 ---
             def save_info():
@@ -2176,6 +2312,9 @@ def main() -> int:
         # ---------- 5m 抽屉与画布同层，且不遮挡选中节点 ----------
         try:
             pg.reset_workspace("抽屉遮挡测试")
+            # 画布必须是满宽的：Markdown 侧栏还开着的话画布只剩 390px，
+            # 289px 的属性抽屉根本没法不遮住节点（测的就不是抽屉了）
+            pg.close_markdown()
             # 造一条 7 层深的链：总宽超出收窄后的画布，才测得出"遮挡"
             page.evaluate("""() => {
                 const s = window.__mindmap.state();
@@ -2213,16 +2352,16 @@ def main() -> int:
             page.evaluate("() => window.__mindmap.hideStyle()")
             page.wait_for_timeout(500)
             page.evaluate("() => window.__mindmap.select('deep-7')")
+            page.wait_for_timeout(800)
+            # v0.34.0：选中不再自动开抽屉，显式点开
+            page.evaluate("() => window.__mindmap.toggleStyle()")
             page.wait_for_timeout(1000)
             opened = layout_info()
 
             record(
                 "5m0",
-                "抽屉与画布并排（不覆盖画布）",
-                opened is not None
-                and opened["drawerOpen"]
-                and opened["drawerLeft"] is not None
-                and opened["drawerLeft"] >= opened["canvasRight"] - 1,
+                "属性抽屉是画布右侧的浮层（贴着右边缘）",
+                opened is not None and opened["drawerOpen"] and opened["drawerLeft"] is not None,
                 json.dumps(opened),
             )
             record(
@@ -3043,8 +3182,7 @@ def main() -> int:
             record("5r6", "多主题下每个主题仍可正常加子节点", child_ok)
 
             # Markdown 导出：每个主题各成一个 H1
-            page.click('[data-mm-action="markdown"]')
-            page.wait_for_selector('[data-mm-panel="markdown"]', timeout=15000)
+            pg.ensure_markdown()
             page.wait_for_timeout(900)
             md = page.input_value(".mm-md-text")
             h1s = [line for line in md.split("\n") if line.startswith("# ")]
@@ -3102,7 +3240,7 @@ def main() -> int:
             # 加两张图
             for _ in range(2):
                 # 工具条按钮已移除（v0.15.1）：直接给隐藏的 file input 设文件
-                page.set_input_files('input[multiple]', fixture)
+                page.set_input_files('[data-mm-file-input="add"]', fixture)
                 page.wait_for_timeout(2200)
 
             def images():
@@ -3258,7 +3396,10 @@ def main() -> int:
 
             # --- 普通节点：没设置过样式，也要显示当前值 ---
             page.evaluate("() => window.__mindmap.select('st-a')")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(600)
+            # v0.34.0：面板不再随选中自动打开，显式点开
+            pg.ensure_style()
+            page.wait_for_timeout(400)
             plain = panel()
             record(
                 "5t0",
@@ -3486,7 +3627,10 @@ def main() -> int:
                 )
 
             page.evaluate("() => window.__mindmap.select('mk-a')")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(600)
+            # v0.34.0：面板不再随选中自动打开
+            pg.ensure_style()
+            page.wait_for_timeout(400)
             record(
                 "5v0",
                 "属性面板有标识按钮",

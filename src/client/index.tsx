@@ -149,39 +149,71 @@ function MindMapApp({ store }: { store: MindmapStore }): React.ReactElement {
               <MindMapCanvas store={store} state={state} />
             </div>
             {/*
-             * 右侧抽屉区：属性抽屉 + Markdown 栏并排，各自独立开关。
+             * 右侧抽屉区：属性抽屉 + Markdown 栏，各自独立开关。
              *
              * 属性从"画布下方横条"改成右侧抽屉：横条会挤占画布高度，
              * 导图一深就得上下滚；抽屉只占宽度，画布高度不变。
-             * 两个都在右侧，所以用同一列顺序摆放，窄屏时自动上下堆叠。
+             *
+             * 属性抽屉**只由工具栏「属性」按钮开关**（面板自己的 × 也能关）。
+             * 内容是"当前选中的对象"，所以只有一个抽屉：
+             *   选中连线 → 连线属性；选中节点 → 节点属性；都没选 → 一句提示。
+             * 两个抽屉本来就互斥（选节点会清掉连线选中，反之亦然），
+             * 所以没必要做两个按钮，也不会出现两个面板抢位置。
              */}
-            {/*
-             * 连线属性抽屉：选中线时优先显示（此时用户的意图是改线，
-             * 而不是改节点的外观）。
-             */}
-            {edgeTarget !== undefined && !(state.styleOpen && styleTarget !== undefined) ? (
-              <div className="mm-split-side mm-split-style" data-mm-side="edge-style">
-                <EdgePanel
-                  store={store}
-                  state={state}
-                  kind={edgeTarget.kind}
-                  targetId={edgeTarget.id}
-                  style={edgeTarget.style}
-                  width={edgeTarget.width}
-                  color={edgeTarget.color}
-                />
-              </div>
-            ) : null}
-            {styleTarget !== undefined && state.styleOpen && edgeTarget === undefined ? (
-              <div className="mm-split-side mm-split-style" data-mm-side="style">
-                <StylePanel
-                  store={store}
-                  state={state}
-                  node={styleTarget.node}
-                  depth={styleTarget.depth}
-                  selectedIds={state.selectedIds}
-                />
-              </div>
+            {state.styleOpen ? (
+              edgeTarget !== undefined ? (
+                <div className="mm-split-side mm-split-style" data-mm-side="edge-style">
+                  <EdgePanel
+                    store={store}
+                    state={state}
+                    kind={edgeTarget.kind}
+                    targetId={edgeTarget.id}
+                    style={edgeTarget.style}
+                    width={edgeTarget.width}
+                    color={edgeTarget.color}
+                  />
+                </div>
+              ) : styleTarget !== undefined ? (
+                <div className="mm-split-side mm-split-style" data-mm-side="style">
+                  <StylePanel
+                    store={store}
+                    state={state}
+                    node={styleTarget.node}
+                    depth={styleTarget.depth}
+                    selectedIds={state.selectedIds}
+                  />
+                </div>
+              ) : (
+                /*
+                 * 空态：面板开着但什么都没选。
+                 *
+                 * 不自动收起（那会让按钮的按下状态和面板可见性对不上），
+                 * 而是留一块写着提示的区域——用户一眼就知道"要先选东西"。
+                 */
+                <div
+                  className="mm-split-side mm-split-style"
+                  data-mm-side="style"
+                  data-mm-style-empty="true"
+                >
+                  <div className="mm-style" role="region" aria-label="属性">
+                    <div className="mm-style-head">
+                      <span className="mm-style-title">属性</span>
+                      <div className="mm-grow" />
+                      <button
+                        type="button"
+                        className="mm-btn"
+                        data-icon="true"
+                        data-mm-action="style-close"
+                        onClick={() => store.hideStyle()}
+                        title="收起属性抽屉"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <p className="mm-style-hint">选中一个节点或一条连线，在这里改它的外观。</p>
+                  </div>
+                </div>
+              )
             ) : null}
             {state.mdOpen ? (
               <div className="mm-split-side" data-mm-side="markdown">
@@ -398,6 +430,7 @@ export function apply(ctx: ClientContext): void {
       store.repointEdge(a, b, pos),
     selectMany: (ids: string[]): void => store.selectMany(ids),
     hideStyle: (): void => store.hideStyle(),
+    toggleStyle: (): void => store.toggleStyle(),
     undo: (): void => store.undo(),
     redo: (): void => store.redo(),
     duplicate: (ids?: string[]): string[] => store.duplicate(ids),

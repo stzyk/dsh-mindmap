@@ -183,8 +183,14 @@ export interface ViewState {
   /**
    * 右侧属性抽屉是否展开。
    *
-   * 默认随选中自动展开（选中节点就是要调属性），用户点 × 可以收起；
-   * 再次选中任何节点会重新展开——收起是"暂时不想看"，不是"永久关掉"。
+   * **只由工具栏的「属性」按钮（和面板自己的 × ）开关，选中不再自动展开。**
+   *
+   * 早先是"选中即展开"：点一下节点、再点一下线，抽屉跟着闪，
+   * 而且只要想拖一下节点就会被抽屉挡住半屏。属性是"偶尔要调"的东西，
+   * 不该是"选中就必然出现"的东西，所以改成显式开关。
+   *
+   * 开关只管"看不看"，不管"看谁"：开着的时候选中谁就显示谁，
+   * 没有选中就显示一句提示——这样按钮的按下状态和面板是否可见永远一致。
    */
   styleOpen: boolean;
   /** 是否一开始就在加载。 */
@@ -326,8 +332,14 @@ export interface MindmapStore {
   selectMany(ids: string[]): void;
   /** 加选 / 减选一个（Shift 或 Cmd/Ctrl + 点击）。 */
   toggleSelect(id: string): void;
-  /** 收起右侧属性抽屉（下次选中会重新展开）。 */
+  /** 收起右侧属性抽屉（面板上的 × 用；不会取消选中）。 */
   hideStyle(): void;
+  /**
+   * 开关右侧属性抽屉（工具栏「属性」按钮用）。
+   *
+   * 开着的时候再点就关；没选中任何节点/连线时只提示，不打开。
+   */
+  toggleStyle(): void;
   /** 进入 / 退出原地编辑。 */
   edit(id: string | null): void;
   /** 设置搜索词。 */
@@ -652,6 +664,9 @@ export function createStore(): MindmapStore {
           mode: "edit",
           selectedId: payload.doc.root.id,
           editingId: null,
+          // 换文档就收起属性面板：面板显示的是"上一份文档的某个节点"，
+          // 留着它只会指向一个已经不存在的对象
+          styleOpen: false,
           online: true,
           // 历史刚复位，快照里的可用性也必须一起归零。
           // 漏了这一行，按钮会保持上一步文档的禁用态（实测：新建后
@@ -680,6 +695,8 @@ export function createStore(): MindmapStore {
           mode: "edit",
           selectedId: payload.doc.root.id,
           editingId: null,
+          // 换文档收起属性面板（理由同 create）
+          styleOpen: false,
           online: true,
           historyState: { canUndo: false, canRedo: false },
         });
@@ -690,7 +707,7 @@ export function createStore(): MindmapStore {
 
     back() {
       void flush();
-      set({ mode: "list", editingId: null });
+      set({ mode: "list", editingId: null, styleOpen: false });
     },
 
     showMarkdown() {
@@ -854,7 +871,6 @@ export function createStore(): MindmapStore {
         doc: { ...state.doc, root: result.root, multiTheme: true, updatedAt: Date.now() },
         selectedId: result.themeId,
         selectedIds: [result.themeId],
-        styleOpen: true,
         editingId: result.themeId,
       });
       syncHistory();
@@ -1121,7 +1137,6 @@ export function createStore(): MindmapStore {
       set({
         selectedIds: result.ids,
         selectedId: result.ids[result.ids.length - 1] ?? null,
-        styleOpen: true,
         editingId: null,
       });
       toast(result.ids.length > 1 ? `已复制 ${String(result.ids.length)} 组节点` : "已复制");
@@ -1214,7 +1229,8 @@ export function createStore(): MindmapStore {
         selectedId: null,
         selectedIds: [],
         editingId: null,
-        styleOpen: false,
+        // 取消选中就收起面板（同 select）
+        ...(id === null ? { styleOpen: false } : {}),
       });
     },
 
@@ -1225,7 +1241,7 @@ export function createStore(): MindmapStore {
         selectedId: null,
         selectedIds: [],
         editingId: null,
-        styleOpen: false,
+        ...(id === null ? { styleOpen: false } : {}),
       });
     },
 
@@ -1290,21 +1306,53 @@ export function createStore(): MindmapStore {
       pushDoc({ links: next ?? [] });
     },
 
+    /*
+     * 选中**只改变"选中谁"**，不再顺带开关属性面板。
+     *
+     * 面板的开关是用户的事（工具栏「属性」按钮 / 面板上的 ×）。
+     * 早先"选中即展开"，于是每点一个节点画布右侧就闪一下，
+     * 拖节点时还经常被抽屉压住——选中和"要调属性"本来就是两回事。
+     */
     select(id) {
       set({
         selectedId: id,
         selectedIds: id === null ? [] : [id],
-        // 选节点时清掉连线选中：两套高亮同时亮着会让人分不清"现在操作的是什么"，
-        // 两个抽屉也会同时打开（用户要求互斥）
+        // 选节点时清掉连线选中：两套高亮同时亮着会让人分不清"现在操作的是什么"
         selectedEdgeId: null,
         selectedFreeLinkId: null,
-        // 选中即展开属性抽屉；取消选中时收起
-        styleOpen: id !== null,
+        // 取消选中（点空白 / Esc）就收起面板：面板显示的是"选中对象的属性"，
+        // 没有对象可显示时留一块 300px 的空面板，在窄抽屉里等于挡掉半屏画布
+        ...(id === null ? { styleOpen: false } : {}),
       });
     },
 
     hideStyle() {
       set({ styleOpen: false });
+    },
+
+    /*
+     * 「属性」按钮：一个开关管两种面板。
+     *
+     * 面板内容由**当前选中**决定（选中连线就是连线属性，选中节点就是节点属性，
+     * 都没选就是一句提示），所以不需要两个按钮——两个抽屉本来就互斥。
+     *
+     * 没选中任何东西时不允许打开：开出来也是一片空，不如直接说清楚要选什么。
+     * 已经开着的时候随时可以关（包括没选中时），否则用户会被困在空面板里。
+     */
+    toggleStyle() {
+      if (state.styleOpen) {
+        set({ styleOpen: false });
+        return;
+      }
+      const hasTarget =
+        state.selectedId !== null ||
+        state.selectedEdgeId !== null ||
+        state.selectedFreeLinkId !== null;
+      if (!hasTarget) {
+        toast("先选一个节点或连线，再打开属性");
+        return;
+      }
+      set({ styleOpen: true });
     },
 
     selectMany(ids) {
@@ -1314,7 +1362,11 @@ export function createStore(): MindmapStore {
         selectedIds: unique,
         // 主选中项取最后一个：用户最后划到/点到的那个，符合直觉
         selectedId: unique.length > 0 ? unique[unique.length - 1] : null,
-        styleOpen: unique.length > 0,
+        // 框选节点同样要清掉连线选中：否则边高亮和节点高亮会同时亮
+        selectedEdgeId: null,
+        selectedFreeLinkId: null,
+        // 框选成空 = 什么都没选，面板一起收
+        ...(unique.length === 0 ? { styleOpen: false } : {}),
         editingId: null,
       });
     },
@@ -1326,7 +1378,9 @@ export function createStore(): MindmapStore {
       set({
         selectedIds: next,
         selectedId: next.length > 0 ? next[next.length - 1] : null,
-        styleOpen: next.length > 0,
+        selectedEdgeId: null,
+        selectedFreeLinkId: null,
+        ...(next.length === 0 ? { styleOpen: false } : {}),
         editingId: null,
       });
     },

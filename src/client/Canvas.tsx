@@ -485,12 +485,21 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
     return () => element.removeEventListener("wheel", onWheel);
   }, []);
 
-  /** 选中节点变化时把它滚进视野（只在看不见时挪，避免打断用户）。 */
+  /**
+   * 选中节点变化时把它滚进视野（只在看不见时挪，避免打断用户）。
+   *
+   * 右边留多少，取决于**属性抽屉开没开**：抽屉是 300px 浮层，开着就留 320px
+   * 免得选中节点被盖住；关着就只留 40px。
+   *
+   * 早先无条件留 320px——那时"选中即开抽屉"，所以看起来是对的。抽屉改成
+   * 显式开关后，关着抽屉也硬留 320px 就会**在选中那一刻平移画布**（实测 80px），
+   * 而双击的第二次点击是按第一下的坐标打出去的，于是打空、落到空白处，
+   * 表现就是"双击节点却多出一个主题"。
+   */
   React.useEffect(() => {
     if (selectedId === null) return;
-    // 属性抽屉是浮层（300px），留出边距避免选中节点被盖住
-    scrollNodeIntoView(selectedId, 320);
-  }, [selectedId, scrollNodeIntoView]);
+    scrollNodeIntoView(selectedId, state.styleOpen ? 320 : 40);
+  }, [selectedId, state.styleOpen, scrollNodeIntoView]);
 
   /**
    * 选中连线时把它的子节点滚进视野。
@@ -501,9 +510,10 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
    */
   React.useEffect(() => {
     if (state.selectedEdgeId === null) return;
-    // 留出 320px：连线抽屉是浮层（288px），不预留就会被它盖住
-    scrollNodeIntoView(state.selectedEdgeId, 320);
-  }, [state.selectedEdgeId, scrollNodeIntoView]);
+    // 抽屉开着才留 320px（连线抽屉是 288px 浮层，不预留会被它盖住）；
+    // 关着就只留 40px，别平白无故挪画布
+    scrollNodeIntoView(state.selectedEdgeId, state.styleOpen ? 320 : 40);
+  }, [state.selectedEdgeId, state.styleOpen, scrollNodeIntoView]);
 
   /** 编辑态变化时也滚一次（编辑框比节点宽）。 */
   React.useEffect(() => {
@@ -1863,6 +1873,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
         <input
           ref={replaceInputRef}
           type="file"
+          data-mm-file-input="replace"
           accept="image/png,image/jpeg,image/gif,image/webp"
           style={{ display: "none" }}
           onChange={onReplacePicked}
@@ -1872,6 +1883,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
         <input
           ref={fileInputRef}
           type="file"
+          data-mm-file-input="add"
           accept="image/png,image/jpeg,image/gif,image/webp"
           multiple
           style={{ display: "none" }}
@@ -2778,6 +2790,24 @@ export function CanvasToolbar({ store, state }: CanvasProps): React.ReactElement
       )}
 
       <div className="mm-grow" />
+
+      {/*
+       * 「属性」开关。
+       *
+       * 属性面板不再随选中自动弹出（用户要求）：选中是"我要操作这个节点"，
+       * 调属性是"我要改它的样子"，两件事分开。按钮按下 = 面板可见，
+       * 面板里显示谁由当前选中决定，所以一个按钮同时管节点属性和连线属性。
+       */}
+      <button
+        type="button"
+        className="mm-btn"
+        data-primary={state.styleOpen ? "true" : undefined}
+        data-mm-action="style"
+        onClick={() => store.toggleStyle()}
+        title={state.styleOpen ? "收起属性面板" : "打开属性面板（选中节点或连线后改它的外观）"}
+      >
+        属性
+      </button>
 
       {/* Markdown 现在是右侧可开关的一栏，不再是与画布互斥的视图 */}
       <button

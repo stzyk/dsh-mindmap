@@ -1264,16 +1264,24 @@ img.mm-node-img { cursor: zoom-in; }
  * 手柄做成 11px 的圆点（r=5 + 描边），好点得多，
  * 而且"两端都能拖"这件事本身变得可见。
  */
+/*
+ * 端点手柄**不画出来**（用户要求：选中连线时不要线头线尾那两个圆圈）。
+ *
+ * 元素仍然保留：拖动端点改接（父子两端都能拖）只有这一个入口，
+ * 直接删掉元素等于把"改线"功能一起删了。所以保留热区、去掉外观。
+ *
+ * fill 必须写 transparent，不能写 none——none 的图形不接收指针事件，
+ * 手柄就再也拖不动了（这是个很容易踩的坑）。
+ */
 .mm-edge-handle {
-  fill: var(--dsw-alias-bg-base, #fff);
-  stroke: var(--dsw-alias-state-business-primary, #4a7dff);
-  stroke-width: 2;
+  fill: transparent;
+  stroke: none;
   cursor: grab;
   pointer-events: all;
 }
 .mm-edge-handle:hover {
-  fill: var(--dsw-alias-state-business-primary, #4a7dff);
-  stroke: var(--dsw-alias-bg-base, #fff);
+  fill: transparent;
+  stroke: none;
 }
 .mm-edge-handle:active {
   cursor: grabbing;
@@ -1933,16 +1941,24 @@ img.mm-node-img { cursor: zoom-in; }
  * 手柄做成 11px 的圆点（r=5 + 描边），好点得多，
  * 而且"两端都能拖"这件事本身变得可见。
  */
+/*
+ * 端点手柄**不画出来**（用户要求：选中连线时不要线头线尾那两个圆圈）。
+ *
+ * 元素仍然保留：拖动端点改接（父子两端都能拖）只有这一个入口，
+ * 直接删掉元素等于把"改线"功能一起删了。所以保留热区、去掉外观。
+ *
+ * fill 必须写 transparent，不能写 none——none 的图形不接收指针事件，
+ * 手柄就再也拖不动了（这是个很容易踩的坑）。
+ */
 .mm-edge-handle {
-  fill: var(--dsw-alias-bg-base, #fff);
-  stroke: var(--dsw-alias-state-business-primary, #4a7dff);
-  stroke-width: 2;
+  fill: transparent;
+  stroke: none;
   cursor: grab;
   pointer-events: all;
 }
 .mm-edge-handle:hover {
-  fill: var(--dsw-alias-state-business-primary, #4a7dff);
-  stroke: var(--dsw-alias-bg-base, #fff);
+  fill: transparent;
+  stroke: none;
 }
 .mm-edge-handle:active {
   cursor: grabbing;
