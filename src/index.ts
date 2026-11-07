@@ -21,6 +21,7 @@ import {
   countOf,
   outlineOf,
   resolveDoc,
+  toJsonSchema,
   treeFromMarkdown,
   type MindOp,
   type ToolStore,
@@ -152,9 +153,9 @@ export function methodOf(url: string | undefined, prefix: string): string {
 /**
  * 插件配置。
  *
- * `tools` 默认 **关闭**：模型工具一旦有 schema 问题，会让整个会话 400
- * （上游报 "API 调用参数有误"），用户连普通对话都用不了。
- * 等工具稳定后再考虑默认打开。
+ * `tools` 默认开启（对话可直接读写导图）。
+ * 如果模型侧报 400「API 调用参数有误」，把它设成 false 就能让会话恢复正常——
+ * 这是唯一会让"整个会话不可用"的功能，所以留了这个紧急开关。
  */
 export interface MindmapConfig {
   tools?: boolean;
@@ -162,7 +163,7 @@ export interface MindmapConfig {
 
 export function apply(ctx: HostServices, config?: MindmapConfig): void {
   const logger = safeLogger(ctx);
-  const toolsEnabled = config?.tools === true;
+  const toolsEnabled = config?.tools !== false;
   /*
    * 实际注册成功的工具名。
    *
@@ -506,7 +507,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
 
     // ---- 模型工具（默认关闭，见 MindmapConfig.tools）----
     if (!toolsEnabled) {
-      logger.info("模型工具未启用（配置 tools: true 可打开）");
+      logger.info("模型工具已关闭（配置 tools: false）");
     } else {
       /*
        * 注册模型工具：让对话能直接读写导图。
@@ -553,7 +554,8 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
             toolService!.register({
               name,
               description,
-              parameters,
+              // DSL → 标准 JSON Schema（required: true 收进 required 数组）
+              parameters: toJsonSchema(parameters),
               /*
                * 输出契约必须是一个 **object schema**。
                *
@@ -562,16 +564,23 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
                * 整个会话都跑不起来。对照能正常工作的工具，返回值统一包成
                * `{ text }` 对象，render 再把 text 取出来。
                */
+              /*
+               * 输出契约：照抄 dsh-image-gen（图像工作台）的写法。
+               *
+               * 两个关键点，之前都写错了：
+               *   ① 必须给**显式的 properties**，不能是空的 additionalProperties；
+               *   ② `additionalProperties` 必须是 **false**。
+               * 之前写成 { type: "object", additionalProperties: true }：
+               * 本地注册能过，但模型侧拼出的请求体不合法，上游直接 400（code 1210）。
+               */
               output: {
-                /*
-                 * 必须是 object schema。
-                 *
-                 * 试过 { type: "string" }：本地注册通过，但模型侧拼出来的
-                 * 请求体不合法，上游直接 400（code 1210），整个会话跑不起来。
-                 * 也不能写 { type: "json" }——本地校验就报
-                 * "schema.type must be one of object/array/string/number/…"。
-                 */
-                schema: { type: "object", additionalProperties: true },
+                schema: toJsonSchema({
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    text: { type: "string", required: true },
+                  },
+                }),
                 render: (_args: unknown, value: unknown) => [
                   { type: "text", text: String((value as { text?: unknown })?.text ?? "") },
                 ],

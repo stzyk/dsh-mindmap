@@ -179,3 +179,43 @@ export function pathTextOf(root: MindNode, id: string): string {
   const trail = pathTo(root, id);
   return trail.map((node) => node.text).join(" / ");
 }
+
+/**
+ * 把工具的 DSL 参数/输出描述转成**标准 JSON Schema**。
+ *
+ * DSH 的 `defineTool` 会做这件事，但它是宿主内部的包，插件不该直接依赖。
+ * 不转换的后果很严重：DSL 里的 `required: true` 会原样发给模型侧，
+ * 那不是合法的 JSON Schema，上游直接 400（code 1210「API 调用参数不合法」）。
+ *
+ * 转换规则（和 defineTool 一致）：
+ *   - 属性上的 `required: true` → 收进父级的 `required: [...]` 数组
+ *   - 其余键原样保留（type / description / enum / items / properties …）
+ */
+export function toJsonSchema(spec: Record<string, unknown>): Record<string, unknown> {
+  const convert = (node: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    const required: string[] = [];
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "required") continue;
+      if (key === "properties" && value !== null && typeof value === "object") {
+        const props: Record<string, unknown> = {};
+        for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
+          if (child === null || typeof child !== "object") continue;
+          const childSpec = child as Record<string, unknown>;
+          if (childSpec.required === true) required.push(name);
+          props[name] = convert(childSpec);
+        }
+        out.properties = props;
+        continue;
+      }
+      if (key === "items" && value !== null && typeof value === "object") {
+        out.items = convert(value as Record<string, unknown>);
+        continue;
+      }
+      out[key] = value;
+    }
+    if (required.length > 0) out.required = required;
+    return out;
+  };
+  return convert(spec);
+}
