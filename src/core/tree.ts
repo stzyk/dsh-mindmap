@@ -1439,26 +1439,38 @@ export function pruneLinks(links: readonly MindLink[] | undefined, root: MindNod
 export function disconnectNode(
   root: MindNode,
   id: string,
-  position?: { x: number; y: number },
-): MindNode | undefined {
-  const next = cloneNode(root);
-  const target = locate(next, id);
-  if (target === undefined) return undefined;
-  // 根节点没有上级连线
-  if (target.parent === undefined) return undefined;
-  // 已经是顶层（主题）的节点，本来就没有连线
-  if (target.parent.id === next.id && next.children.length > 0 && next.text.length === 0) return undefined;
-  target.node.detached = true;
+  multiTheme = false,
+): { root: MindNode; multiTheme: boolean } | undefined {
+  const source = locate(root, id);
+  if (source === undefined || source.parent === undefined) return undefined;
+
   /*
-   * 不要钉坐标。
+   * 断开 = 节点**升到第 1 级**（变成并列的主题），子树跟着走。
    *
-   * 断开连线**不改变树结构**（节点还在原父级的同一个位置），
-   * 所以自动布局算出来的坐标和断开前完全一致——钉一个手动坐标反而是多余的，
-   * 而且一旦传进来的值和布局有偏差，节点就会跳一下。
-   * 原本就有手动坐标的节点保留原坐标。
+   * 用户预期：切断 1 -> 21 之后，21 是 `# 21`、子节点变 `## 31`；
+   * 再把 21 连到 22 后面，层级又变 `### 21`。
+   * 层级完全由"连在谁下面"决定，所以断开必须真的提升层级。
+   *
+   * 单主题文档要先升级成多主题，否则"顶层并列"这件事不存在。
    */
-  void position;
-  return next;
+  let base = root;
+  let multi = multiTheme;
+  if (!multi) {
+    base = { id: newId(), text: "", children: [cloneNode(root)] };
+    multi = true;
+  }
+  const next = cloneNode(base);
+  const target = locate(next, id);
+  if (target === undefined || target.parent === undefined) return undefined;
+  // 已经在顶层了
+  if (target.parent.id === next.id) return undefined;
+
+  target.parent.children.splice(target.index, 1);
+  const node = target.node;
+  delete node.detached;
+  delete node.kind;
+  next.children.push(node);
+  return { root: next, multiTheme: multi };
 }
 
 /**

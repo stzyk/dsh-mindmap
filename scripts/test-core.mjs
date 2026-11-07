@@ -1693,24 +1693,22 @@ test("删边后节点保持原位（不会跳到别处）", () => {
  * 断开连线：节点留在原位，不变主题
  * ------------------------------------------------------------------ */
 
-test("断开连线：节点仍在原父级下，层级和子树不变", () => {
+test("断开连线：节点升到第 1 级，子树跟着走", () => {
   const root = {
     id: "r",
-    text: "中心",
+    text: "1",
     children: [
-      { id: "a", text: "A", children: [{ id: "a1", text: "A1", children: [] }] },
-      { id: "b", text: "B", children: [] },
+      { id: "a", text: "21", children: [{ id: "a1", text: "31", children: [] }] },
+      { id: "b", text: "22", children: [] },
     ],
   };
-  const next = disconnectNode(root, "a");
-  assert.ok(next);
-  const a = next.children[0];
-  assert.equal(a.id, "a", "还在原来的位置（第 0 个孩子）");
-  assert.equal(a.detached, true, "标记为已断开");
-  // 不钉手动坐标：结构没变，自动布局算出来就是原位
-  assert.equal(a.position, undefined, "不应该被钉上手动坐标");
-  assert.equal(a.children.length, 1, "子树不动");
-  assert.equal(next.children.length, 2, "没有多出一个顶层主题");
+  const result = disconnectNode(root, "a");
+  assert.ok(result);
+  assert.equal(result.multiTheme, true, "单主题要升级成多主题才能并列");
+  const a = result.root.children.find((c) => c.id === "a");
+  assert.ok(a, "a 升到了顶层");
+  assert.equal(a.children.length, 1, "子树跟着走");
+  assert.equal(a.detached, undefined, "不再用 detached 标记");
 });
 
 test("断开连线后布局不再画那条线，但节点仍参与布局", () => {

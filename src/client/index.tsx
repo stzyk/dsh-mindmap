@@ -297,6 +297,7 @@ export function apply(ctx: ClientContext): void {
     closeMarkdown: (): void => store.closeMarkdown(),
     select: (id: string | null): void => store.select(id),
     selectEdge: (id: string | null): void => store.selectEdge(id),
+    detachEdge: (id: string): boolean => store.detachEdge(id),
     selectFreeLink: (id: string | null): void => store.selectFreeLink(id),
     center: (): void => {
       document.querySelector<HTMLElement>('[data-mm-action="center"]')?.click();

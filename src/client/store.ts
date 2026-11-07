@@ -894,13 +894,29 @@ export function createStore(): MindmapStore {
        * 层级、样式、子树都不变，只是按当前位置悬浮（用户要求 v0.18.0）。
        * 早期实现是"升格成自由主题"，会让节点跳到顶层、层级和样式一起变。
        */
-      // 不传坐标：断开不改变树结构，自动布局会把它留在原位
-      const next = disconnectNode(state.doc.root, childId);
-      if (next === undefined) {
+      /*
+       * 断开 = 升到第 1 级（可能从单主题升级成多主题），
+       * 所以不能走 mutateTree——它用的是当前的 multiTheme。
+       */
+      const result = disconnectNode(state.doc.root, childId, state.doc.multiTheme === true);
+      if (result === undefined) {
         toast("这条连线断不开（根节点没有上级，主题本身也没有连线）", "error");
         return false;
       }
-      mutateTree(next);
+      history.push(result.root, childId, result.multiTheme, state.doc.links ?? []);
+      set({
+        doc: {
+          ...state.doc,
+          root: result.root,
+          multiTheme: result.multiTheme,
+          updatedAt: Date.now(),
+        },
+        selectedId: childId,
+        selectedIds: [childId],
+        editingId: null,
+      });
+      syncHistory();
+      scheduleSave();
       toast("已断开连线（节点还在原位）");
       return true;
     },
