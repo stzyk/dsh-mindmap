@@ -1483,17 +1483,49 @@ export function setNodeKind(
     return { root: next, multiTheme: true };
   }
 
-  // 降成普通子节点：只改标记，不动结构（脱离父级的视觉表现由 detached 负责）
+  /*
+   * 降成普通子节点 = **真的挂到别人下面**，而不是只改一个标记。
+   *
+   * 原来这里只把 kind 改成 "node" 并把节点留在顶层，结果是：
+   * 结构上它还是主题（Markdown 照样输出 h1、排版照样按主题排），
+   * 面板却显示"子节点"——用户点了按钮发现什么都没变。
+   * 层级是结构决定的，改层级就必须改结构。
+   *
+   * 挂到哪儿：**上一个主题**下面（画布上就是它上面那个中心节点），
+   * 这是最符合直觉的选择；没有上一个就挂到下一个。
+   */
   const next = cloneNode(root);
   const target = locate(next, id);
   if (target === undefined) return undefined;
-  target.node.kind = "node";
+
   const isTopLevel = target.parent !== undefined && target.parent.id === next.id;
-  if (isTopLevel) {
-    // 顶层节点没有父级连线可画，降级后表现为"游离"
-    target.node.detached = true;
-    if (position !== undefined) target.node.position = { x: position.x, y: position.y };
+  if (!isTopLevel) {
+    // 已经是普通节点了，只清掉可能残留的标记
+    delete target.node.kind;
+    delete target.node.detached;
+    return { root: next, multiTheme };
   }
+
+  const siblings = target.parent.children;
+  const host =
+    siblings
+      .slice(0, target.index)
+      .reverse()
+      .find((node) => node.id !== id) ??
+    siblings.slice(target.index + 1).find((node) => node.id !== id);
+  if (host === undefined) {
+    // 只有一个主题，没有可挂靠的父级
+    return undefined;
+  }
+
+  siblings.splice(target.index, 1);
+  const node = target.node;
+  delete node.kind;
+  delete node.detached;
+  if (position !== undefined) node.position = { x: position.x, y: position.y };
+  const hostNode = locate(next, host.id);
+  if (hostNode === undefined) return undefined;
+  hostNode.node.children.push(node);
   return { root: next, multiTheme };
 }
 

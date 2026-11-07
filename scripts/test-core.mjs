@@ -1761,18 +1761,29 @@ test("种类：子节点升成主题（单主题文档会升级成多主题）",
   assert.equal(a.children.length, 1, "子树跟着走");
 });
 
-test("种类：主题降成子节点（变成游离，但不丢）", () => {
+test("种类：主题降成子节点会真的挂到上一个主题下面", () => {
   const root = {
     id: "c",
     text: "",
-    children: [{ id: "t1", text: "主题一", children: [] }],
+    children: [
+      { id: "t1", text: "主题一", children: [] },
+      { id: "t2", text: "主题二", children: [{ id: "t2a", text: "子", children: [] }] },
+    ],
   };
-  const result = setNodeKind(root, "t1", "node", true, { x: 40, y: 60 });
+  const result = setNodeKind(root, "t2", "node", true);
   assert.ok(result);
-  const t1 = result.root.children.find((c) => c.id === "t1");
-  assert.equal(t1.kind, "node");
-  assert.equal(t1.detached, true, "顶层节点没有父级连线，降级后表现为游离");
-  assert.deepEqual(t1.position, { x: 40, y: 60 });
+  assert.deepEqual(result.root.children.map((c) => c.id), ["t1"], "不再是顶层主题");
+  const host = result.root.children.find((c) => c.id === "t1");
+  const moved = host.children.find((c) => c.id === "t2");
+  assert.ok(moved, "挂到了上一个主题下面");
+  assert.equal(moved.kind, undefined, "标记清掉，交给结构推断");
+  assert.equal(moved.detached, undefined);
+  assert.equal(moved.children.length, 1, "子树跟着走");
+});
+
+test("种类：只剩一个主题时拒绝降级（没有可挂靠的父级）", () => {
+  const root = { id: "c", text: "", children: [{ id: "t1", text: "唯一主题", children: [] }] };
+  assert.equal(setNodeKind(root, "t1", "node", true), undefined);
 });
 
 /* ------------------------------------------------------------------ *
