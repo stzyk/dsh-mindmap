@@ -1841,3 +1841,36 @@ test("排版顺序：顺序没变时不产生新树（不制造无意义撤销�
   };
   assert.equal(sortSiblingsByPosition(root), undefined);
 });
+
+test("kind 与结构保持一致：顶层是主题，子级是节点", () => {
+  const multi = normalizeDoc({
+    title: "x",
+    multiTheme: true,
+    root: {
+      text: "",
+      children: [
+        { id: "a", text: "密炼法", kind: "node", children: [{ id: "b", text: "特点", kind: "theme", children: [] }] },
+      ],
+    },
+  });
+  assert.equal(multi.root.children[0].kind, "theme", "顶层按结构就是主题");
+  assert.equal(multi.root.children[0].children[0].kind, "node", "子级按结构就是节点");
+});
+
+test("接回树里会清掉主题标记（否则 Markdown 标题级别错乱）", () => {
+  const root = {
+    id: "c",
+    text: "",
+    children: [
+      { id: "t1", text: "主题一", children: [{ id: "t2", text: "主题二", children: [] }] },
+    ],
+  };
+  // 把 t2 从 t1 下挪到容器根（变成主题），再挪回 t1 下面
+  const promoted = reparentNode(root, "t2", "c");
+  assert.ok(promoted);
+  const back = reparentNode(promoted, "t2", "t1");
+  assert.ok(back);
+  const t2 = back.children[0].children[0];
+  assert.equal(t2.kind, undefined, "kind 被清掉，交给结构推断");
+  assert.equal(t2.detached, undefined, "detached 也清掉");
+});

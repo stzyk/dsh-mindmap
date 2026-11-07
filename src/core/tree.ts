@@ -343,6 +343,31 @@ export function normalizeNode(input: unknown, budget = { left: MAX_NODES }, dept
 }
 
 /** 把任意来源收敛成一份合法文档（id / 时间戳 / 标题都会补全）。 */
+/** 把整棵子树标成普通子节点。 */
+function markSubtreeAsNodes(node: MindNode): void {
+  node.kind = "node";
+  for (const child of node.children) markSubtreeAsNodes(child);
+}
+
+/**
+ * 按实际层级校正每个节点的 kind。
+ *
+ * 层级语义：
+ *   - 单主题：根节点就是主题，它的子级全是普通节点；
+ *   - 多主题：根退化成不渲染的容器，它的 children 才是并列的主题。
+ */
+function syncKind(root: MindNode, multiTheme: boolean): void {
+  root.kind = multiTheme ? "node" : "theme";
+  for (const theme of root.children) {
+    if (multiTheme) {
+      theme.kind = "theme";
+      for (const child of theme.children) markSubtreeAsNodes(child);
+    } else {
+      markSubtreeAsNodes(theme);
+    }
+  }
+}
+
 export function normalizeDoc(input: unknown): MindDoc {
   const raw = input !== null && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const now = Date.now();
@@ -356,6 +381,18 @@ export function normalizeDoc(input: unknown): MindDoc {
     updatedAt,
   };
   if (raw.multiTheme === true) doc.multiTheme = true;
+  /*
+   * 把 kind 拉回与结构一致。
+   *
+   * 出过的问题：断开连线时节点被升成主题（kind = "theme"），后来重新接回树里，
+   * 结构上已经是子节点了，但 kind 还留着 —— 于是 Markdown 按顶层算标题级别
+   * （h1）、自动排版按主题单独排，属性面板却显示"子节点"，三处互相矛盾，
+   * 而且怎么点都改不回来。
+   *
+   * kind 本来就只是"结构"的另一个说法，读盘时统一按实际层级校正：
+   * 顶层 = 主题，其余 = 子节点。这样三处永远一致。
+   */
+  syncKind(doc.root, doc.multiTheme === true);
   const links = normalizeLinks(raw.links, doc.root);
   if (links !== undefined) doc.links = links;
   /*
@@ -994,6 +1031,15 @@ export function reparentNode(
   delete parent.node.collapsed;
   const at = index === undefined ? parent.node.children.length : Math.max(0, Math.min(index, parent.node.children.length));
   parent.node.children.splice(at, 0, moved.node);
+  /*
+   * 接回树里之后，"断开的线"和"它是主题"这两个标记都必须清掉。
+   *
+   * 否则会出现：节点明明已经挂在别人下面了，kind 还写着 theme ——
+   * Markdown 按顶层给 h1、排版把它当主题单独排，属性面板却显示"子节点"，
+   * 三处互相矛盾且改不回来（用户实测报的就是这个）。
+   */
+  delete moved.node.detached;
+  delete moved.node.kind;
   return next;
 }
 
