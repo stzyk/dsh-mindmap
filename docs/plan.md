@@ -1237,7 +1237,7 @@ v0.24.0 只做到"kind 与结构一致"，但**面板点「子节点」仍然没
 
 ### 4.2aw 工具层事故：一条 remove 洗掉 102 个节点（v0.35.0）
 
-**现场**：另一个会话（`session-9acd3e00`）里模型用 `mindmap_update` 改一张 102 节点的图，
+**现场**：另一个会话里模型用 `mindmap_update` 改一张 102 节点的图，
 一条 `remove` 之后整张图只剩根节点，之后所有 `add` 都报
 `Cannot read properties of undefined (reading 'length')` / `node.children is not iterable`。
 
@@ -1409,7 +1409,7 @@ v0.24.0 只做到"kind 与结构一致"，但**面板点「子节点」仍然没
 ### desktop-web 安装记录（2026-11-05 09:2x）
 
 ```bash
-dsh plugin --profile desktop-web add link:/Users/mumu/projects/public/dsh-mindmap
+dsh plugin --profile desktop-web add link:/path/to/dsh-mindmap
 ```
 
 安装与静态验证结果（重启前唯一能做的验证全部做了）：
@@ -1444,7 +1444,7 @@ cp cordis.patch.yml.bak-before-mindmap cordis.patch.yml
 ## 7. 复跑全部验证
 
 ```bash
-cd /Users/mumu/projects/public/dsh-mindmap
+cd /path/to/dsh-mindmap
 npm install
 npm run bundle          # 构建
 npm test                # 271 项单测

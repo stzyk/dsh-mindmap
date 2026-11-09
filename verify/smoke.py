@@ -27,7 +27,7 @@ import traceback
 
 from playwright.sync_api import sync_playwright
 
-DEFAULT_OUT = "/Users/mumu/projects/public/dsh-mindmap/verify/screenshots"
+DEFAULT_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
 PLUGIN_ID = "dsh-mindmap"
 
 results: list[dict] = []
