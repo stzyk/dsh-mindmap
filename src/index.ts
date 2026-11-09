@@ -589,7 +589,7 @@ export function apply(ctx: HostServices, config?: MindmapConfig): void {
                * `{ text }` 对象，render 再把 text 取出来。
                */
               /*
-               * 输出契约：照抄 dsh-image-gen（图像工作台）的写法。
+               * 输出契约的写法（显式 properties + additionalProperties:false）。
                *
                * 两个关键点，之前都写错了：
                *   ① 必须给**显式的 properties**，不能是空的 additionalProperties；

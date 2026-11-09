@@ -291,7 +291,7 @@ export function apply(ctx: ClientContext): void {
    *
    * 左侧是"切换主面板"的语义——点它会占满主区域、把会话界面换掉，
    * 右侧抽屉随之失去挂载点。导图的入口在右侧抽屉首页的卡片里
-   * （见 aiTab.ts 的 guide），和「图像工作台」一致。
+   * （见 aiTab.ts 的 guide）。
    */
 
   /*
