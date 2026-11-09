@@ -14,7 +14,7 @@
  *   Shift+Tab        取消缩进
  *   Alt+↑ / Alt+↓    在兄弟之间上移 / 下移
  *   Backspace/Delete 删除选中节点（根节点不可删）
- *   空格 / F2        编辑选中节点文字
+ *   空格 / F2        编辑选中节点文字（保留原文，光标在末尾）
  *   ↑ ↓ ← →         在树上移动光标（← 到父节点，→ 到第一个子节点）
  *   Esc              退出编辑 / 取消选中
  *
@@ -1702,7 +1702,28 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
       }
 
       /*
-       * 选中节点后直接打字 = 进入编辑（用户需求，v0.8.0）。
+       * 空格 / F2 = 进入编辑，且**保留原文字**（v0.35.5 用户反馈）。
+       *
+       * 必须排在下面那条"直接打字"规则**之前**：空格也是 length === 1 的
+       * 可打印字符，先被那条接走的话会顺手把首字符当成 pendingChar，
+       * 于是整个节点被一个空格顶替——用户看到的就是"内容被清空了"。
+       *
+       * 两个键的语义也不该一样：
+       *   空格 / F2 —— "我要改这段字"，打开编辑器、光标在末尾，原文字还在；
+       *   直接打字   —— "我要换掉这段字"，首字符顶替原文。
+       * 这正是大多数大纲/思维导图工具的习惯。
+       */
+      if (event.key === " " || event.key === "F2") {
+        event.preventDefault();
+        // 显式清掉可能残留的 pendingChar：否则上一次"直接打字"没消费掉时
+        // 会把旧的首字符带进来，看起来像凭空冒出一个字
+        pendingCharRef.current = null;
+        if (selectedId !== null) store.edit(selectedId);
+        return;
+      }
+
+      /*
+       * 选中节点后直接打字 = 进入编辑并**顶替**原文字（用户需求，v0.8.0）。
        *
        * 判定条件刻意收得很紧，避免抢掉快捷键：
        *   - 长度为 1 的可打印字符（排除 Tab / Enter / 方向键 / Delete 等）；
@@ -1710,7 +1731,7 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
        *   - 不在输入法合成中（中文打字时 key 是 "Process" 或 isComposing 为真，
        *     这时候抢键会把输入法拆散）。
        *
-       * 首字符会顶替原文字（见 pendingCharRef），符合"直接改写"的直觉。
+       * 空格和 F2 已经在上面单独处理掉了，不会走到这里。
        */
       if (
         selectedId !== null &&
@@ -1784,11 +1805,6 @@ export function MindMapCanvas({ store, state }: CanvasProps): React.ReactElement
       if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         deleteSelected();
-        return;
-      }
-      if (event.key === " " || event.key === "F2") {
-        event.preventDefault();
-        if (selectedId !== null) store.edit(selectedId);
         return;
       }
       if (event.key === "Escape") {
@@ -2863,7 +2879,7 @@ export function KeyboardHints(): React.ReactElement {
       <span>右键/中键拖动 平移</span>
       <span>双击空白 加主题</span>
       <span><kbd>Cmd/Ctrl</kbd>+<kbd>D</kbd> 复制</span>
-      <span><kbd>空格</kbd> 改文字</span>
+      <span><kbd>空格</kbd> 改文字（保留原文）</span>
       <span><kbd>Del</kbd> 删除</span>
       <span><kbd>Cmd/Ctrl</kbd>+<kbd>Z</kbd> 撤销</span>
       <span>双击节点也能改</span>

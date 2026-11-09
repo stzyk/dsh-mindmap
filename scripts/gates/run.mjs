@@ -174,6 +174,17 @@ check(
   "add/remove 的返回值是 { root, id }，必须取 .root 并校验是节点",
 );
 
+// ── 5a2. 空格 / F2 必须排在"直接打字"之前 ────────────────
+// 两者都是 length===1 的可打印字符。空格若排在后面，会被当作"首字符顶替原文"，
+// 于是按空格 = 整个节点被一个空格洗掉（v0.35.4 的真实 bug）。
+const spaceIdx = canvasSrc.indexOf('event.key === " " || event.key === "F2"');
+const typeIdx = canvasSrc.indexOf("pendingCharRef.current = event.key");
+check(
+  "空格/F2 的编辑分支排在「直接打字」之前",
+  spaceIdx > 0 && typeIdx > 0 && spaceIdx < typeIdx,
+  "空格也是单字符，排在后面会被当成首字符顶替原文字（内容被清空）",
+);
+
 // ── 5b. 属性面板是显式开关（v0.34.0 用户要求） ────────────
 // 用户要求：点节点、点连线**不再**自动弹属性面板，改用工具栏的「属性」按钮。
 // 判据：select() 的函数体里不许出现 styleOpen。

@@ -2112,6 +2112,62 @@ def main() -> int:
                 str(committed),
             )
 
+            # --- 空格 / F2 保留原文字（v0.35.5 用户反馈的回归）---
+            # 空格曾经被"直接打字"那条规则抢走：它也是 length===1 的可打印字符，
+            # 于是整个节点被一个空格顶替，用户看到的是"内容被清空了"。
+            page.evaluate("""() => {
+                const s = window.__mindmap.state();
+                window.__mindmap.mutate({
+                    ...s.doc.root,
+                    children: [{id: 'sp-a', text: '原有内容abc', children: []}],
+                });
+            }""")
+            page.wait_for_timeout(900)
+            page.evaluate("() => { window.__mindmap.select('sp-a'); document.querySelector('.mm-canvas').focus(); }")
+            page.wait_for_timeout(400)
+            page.keyboard.press(" ")
+            page.wait_for_timeout(600)
+            space = page.evaluate("""() => {
+                const s = window.__mindmap.state();
+                const i = document.querySelector('.mm-node-input');
+                return {editing: s.editingId !== null, draft: i ? i.value : null,
+                        caret: i ? i.selectionStart : null};
+            }""")
+            record(
+                "5l1a",
+                "按空格进入编辑且保留原文字（光标在末尾）",
+                space["editing"] and space["draft"] == "原有内容abc" and space["caret"] == 7,
+                json.dumps(space, ensure_ascii=False),
+            )
+            page.keyboard.type("追加")
+            page.wait_for_timeout(400)
+            appended = page.evaluate("() => { const i = document.querySelector('.mm-node-input'); return i ? i.value : null; }")
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(700)
+            committed_space = page.evaluate("""() => {
+                const s = window.__mindmap.state();
+                let hit = null;
+                const w = (n) => { if (n.id === 'sp-a') hit = n.text; n.children.forEach(w); };
+                w(s.doc.root);
+                return hit;
+            }""")
+            record(
+                "5l1b",
+                "空格打开后继续输入是追加在原文字后面",
+                appended == "原有内容abc追加" and committed_space == "原有内容abc追加",
+                f"输入框={appended} 提交后={committed_space}",
+            )
+            # F2 同样保留原文
+            page.evaluate("() => { const s = window.__mindmap.state(); window.__mindmap.select('sp-a'); }")
+            page.wait_for_timeout(300)
+            page.evaluate("() => document.querySelector('.mm-canvas').focus()")
+            page.keyboard.press("F2")
+            page.wait_for_timeout(500)
+            f2 = page.evaluate("() => { const i = document.querySelector('.mm-node-input'); return i ? i.value : null; }")
+            record("5l1c", "F2 进入编辑同样保留原文字", f2 == "原有内容abc追加", str(f2))
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+
             # 快捷键不能被抢：Tab 仍然加子节点
             page.locator('.mm-node[data-root="true"]').click()
             page.wait_for_timeout(400)
@@ -2314,6 +2370,9 @@ def main() -> int:
             for key, name in [
                 ("5l0", "选中节点后直接打字即进入编辑"),
                 ("5l1", "直接打字的内容能提交（且顶替原文字）"),
+                ("5l1a", "按空格进入编辑且保留原文字（光标在末尾）"),
+                ("5l1b", "空格打开后继续输入是追加在原文字后面"),
+                ("5l1c", "F2 进入编辑同样保留原文字"),
                 ("5l2", "直接打字不影响 Tab 等快捷键"),
                 ("5l3", "属性面板是画布右侧的抽屉"),
                 ("5l4", "抽屉高度占满（不再挤占画布高度）"),
