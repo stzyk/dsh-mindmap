@@ -141,14 +141,6 @@ function safeLogger(ctx: HostServices): { info(...args: unknown[]): void; warn(.
   };
   return { info: (...args) => emit("info", args), warn: (...args) => emit("warn", args) };
 }
-
-/** 从 /mindmap/<method> 里取出方法名。 */
-export function methodOf(url: string | undefined, prefix: string): string {
-  const path = (url ?? "").split("?")[0] ?? "";
-  if (!path.startsWith(prefix)) return "";
-  return path.slice(prefix.length).replace(/^\/+/, "").replace(/\/+$/, "");
-}
-
 /** 注册 Host 半区。 */
 /**
  * 插件配置。

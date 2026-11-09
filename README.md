@@ -356,11 +356,11 @@ dsh plugin --profile web add "github:owner/dsh-mindmap#main"
 ```bash
 npm install
 npm run bundle    # src/ → lib/（esbuild）
-npm run gates     # 30 项合同一致性门禁
-npm test          # 31 项核心逻辑单测（树 / Markdown / 布局）
+npm test          # 271 项单测（核心逻辑 / 存储 / 撤销 / Markdown / 样式 / 模型工具）
+npm run gates     # 41 项合同一致性门禁
 
-# 浏览器冒烟（隔离 3099，不碰 3080）
-bash verify/start-web.sh --bg
+# 浏览器冒烟（隔离实例跑在 3099，独立 DSH_HOME，不碰 3080 的真实数据）
+bash verify/start-isolated.sh --bg
 python3 verify/smoke.py "$(grep -oE 'http://[^ ]*token=[A-Za-z0-9_-]+' verify/dsh-web-3099.log | head -1)"
 bash verify/stop-web.sh
 ```

@@ -149,9 +149,9 @@ check("client src 注册了右侧抽屉 tab", clientSrc.includes('"sidebar.right
 check("client src 不再注册 main 插槽", !clientSrc.includes('slots.inject("main"'));
 check("client src 不再注册左侧边栏", !clientSrc.includes('"sidebar.panellist"'));
 check(
-  "面板 id 与侧边栏图标 id 一致",
-  /PANEL_ID\s*=\s*"mindmap"/.test(clientSrc),
-  "PANEL_ID 必须是 main 的 key 且等于 sidebar.panellist 的 id",
+  "client src 不再保留 PANEL_ID（左侧栏配对机制已移除）",
+  !/PANEL_ID\s*=\s*"mindmap"/.test(clientSrc),
+  "方案 B 后只有一个右侧栏 tab，不再需要 main/sidebar.panellist 的配对 id",
 );
 
 // ── 5a. 模型工具层必须有自己的单测 ────────────────────────

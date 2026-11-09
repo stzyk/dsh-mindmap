@@ -59,10 +59,10 @@ dsh-mindmap/
 │       └── styles.ts         主题变量驱动的样式
 ├── scripts/
 │   ├── build.mjs             esbuild：Node ESM + client CJS 包装
-│   ├── gates/run.mjs         30 项一致性门禁
-│   └── test-core.mjs         31 项核心逻辑单测
+│   ├── gates/run.mjs         41 项一致性门禁
+│   └── test-*.mjs            271 项单测（核心 / 存储 / 撤销 / Markdown / 样式 / 工具）
 ├── verify/
-│   ├── start-web.sh          隔离起 3099
+│   ├── start-isolated.sh     起一个**独立 DSH_HOME** 的 3099（不碰真实数据）
 │   ├── stop-web.sh           停 3099
 │   └── smoke.py              Playwright 浏览器冒烟
 └── docs/plan.md              本文件
@@ -76,15 +76,16 @@ dsh-mindmap/
 
 | 层 | 命令 | 结果 |
 |---|---|---|
-| 核心逻辑单测 | `npm run test:core` | **63 / 63** |
-| 撤销栈单测 | `npm run test:history` | **14 / 14** |
+| 核心逻辑单测 | `npm run test:core` | **144 / 144** |
+| 撤销栈单测 | `npm run test:history` | **20 / 20** |
 | 解析/合并单测 | `npm run test:parse` | **20 / 20** |
-| 样式单测 | `npm run test:style` | **16 / 16** |
+| 样式单测 | `npm run test:style` | **19 / 19** |
 | 存储层验收 | `npm run test:store` | **28 / 28**（含 3 条缺陷回归） |
-| 合同门禁 | `npm run gates` | **30 / 30** |
-| 浏览器冒烟 | `python3 verify/smoke.py <url>` | **234 / 234** |
+| 模型工具单测 | `npm run test:tools` | **40 / 40** |
+| 合同门禁 | `npm run gates` | **41 / 41** |
+| 浏览器冒烟 | `python3 verify/smoke.py <url>` | **240 / 240** |
 
-合计 **231 项单测 + 31 项门禁 + 234 项端到端**。
+合计 **271 项单测 + 41 项门禁 + 240 项端到端**。
 
 ### 4.2 浏览器冒烟覆盖（14/14）
 
@@ -1446,11 +1447,11 @@ cp cordis.patch.yml.bak-before-mindmap cordis.patch.yml
 cd /Users/mumu/projects/public/dsh-mindmap
 npm install
 npm run bundle          # 构建
-npm test                # 59 项单测
-npm run gates           # 30 项门禁
+npm test                # 271 项单测
+npm run gates           # 41 项门禁
 
-bash verify/start-web.sh --bg
+bash verify/start-isolated.sh --bg      # 独立 DSH_HOME，绝不与 3080 共用存储文件
 URL=$(grep -oE 'http://[^ ]*token=[A-Za-z0-9_-]+' verify/dsh-web-3099.log | head -1)
-python3 verify/smoke.py "$URL"     # 14 项浏览器冒烟
+python3 verify/smoke.py "$URL"          # 240 项浏览器冒烟
 bash verify/stop-web.sh
 ```

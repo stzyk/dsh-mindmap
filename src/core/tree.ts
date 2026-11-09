@@ -760,12 +760,6 @@ export function hasManualPositions(root: MindNode): boolean {
 /* ------------------------------------------------------------------ *
  * 节点图片
  * ------------------------------------------------------------------ */
-
-/** 一张图片是否是"只有图片"的形态：取消图片后节点会变成完全空白。 */
-export function isEmptyNode(node: MindNode): boolean {
-  return node.text.trim().length === 0;
-}
-
 /**
  * 给节点追加一张图片。
  * @param root - 当前树（不会被修改）。
@@ -1178,16 +1172,6 @@ export function toggleMark(root: MindNode, id: string, key: string): MindNode | 
   else target.node.marks = marks;
   return next;
 }
-
-/** 清空节点的所有标识。 */
-export function clearMarks(root: MindNode, id: string): MindNode | undefined {
-  const next = cloneNode(root);
-  const target = locate(next, id);
-  if (target === undefined) return undefined;
-  delete target.node.marks;
-  return next;
-}
-
 /* ------------------------------------------------------------------ *
  * 删除连线：子节点变成自由主题
  * ------------------------------------------------------------------ */

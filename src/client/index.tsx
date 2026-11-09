@@ -28,14 +28,10 @@ import { DocList } from "./DocList.tsx";
 import { MarkdownPanel } from "./MarkdownPanel.tsx";
 import { StylePanel } from "./StylePanel.tsx";
 import { EdgePanel } from "./EdgePanel.tsx";
-import { AiPanel, type AiMessage } from "./AiPanel.tsx";
 import { MINDMAP_TAB_ID, mindmapTabDefinition } from "./aiTab.ts";
 import { locate, pathTo } from "../core/tree.ts";
 import { createStore, PLUGIN_ID, type MindmapStore, type ViewState } from "./store.ts";
 import type { MindNode } from "../core/tree.ts";
-
-/** 面板 id：main 的 key 与 sidebar.panellist 的 id 必须一致。 */
-export const PANEL_ID = "mindmap";
 
 /** 严格注入：插槽服务 + 布局服务（图标点进面板由侧边栏驱动，这里不需要 layout）。 */
 /*
@@ -243,66 +239,12 @@ function MindMapApp({ store }: { store: MindmapStore }): React.ReactElement {
   );
 }
 
-/** 侧边栏图标：一条从中心分叉的枝。 */
-function MindmapIcon({ size = 16 }: { size?: number }): React.ReactElement {
-  return React.createElement(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 16 16",
-      fill: "none",
-      stroke: "currentColor",
-      strokeWidth: 1.3,
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      "aria-hidden": true,
-    },
-    // 中心节点
-    React.createElement("rect", { x: 1, y: 6.5, width: 4, height: 3, rx: 1 }),
-    // 两条分支
-    React.createElement("path", { d: "M5 8h2.5" }),
-    React.createElement("path", { d: "M7.5 8c1.2 0 1.2-3 2.5-3h1" }),
-    React.createElement("path", { d: "M7.5 8c1.2 0 1.2 3 2.5 3h1" }),
-    // 两个末端节点
-    React.createElement("rect", { x: 11, y: 3.5, width: 4, height: 3, rx: 1 }),
-    React.createElement("rect", { x: 11, y: 9.5, width: 4, height: 3, rx: 1 }),
-  );
-}
-
-/** 注册 Client 半区。 */
 /**
  * 右侧栏里的导图 tab。
  *
  * 内容是完整的导图应用（列表页 + 画布带工具栏），宽度由右侧栏决定。
  * 自己持有一份 store：每个 tab 各自一份编辑状态，互不干扰。
  */
-/**
- * 侧边栏入口按钮。
- *
- * 点它 = 在当前会话的右侧栏打开导图 tab。不做成"占满主区域"的主面板，
- * 因为那样会话界面会被卸载，右侧栏跟着消失。
- */
-function MindmapLauncher({ ctx }: { ctx: ClientContext }): React.ReactElement {
-  return React.createElement(
-    "button",
-    {
-      type: "button",
-      className: "mm-launch",
-      "data-mm-action": "open-mindmap",
-      title: "打开思维导图",
-      onClick: () => {
-        const right = (ctx as unknown as {
-          sidebarRight?: { openTab: (kind: string) => void };
-        }).sidebarRight;
-        right?.openTab(MINDMAP_TAB_ID);
-      },
-    },
-    React.createElement(MindmapIcon, { size: 16 }),
-    React.createElement("span", null, "思维导图"),
-  );
-}
-
 function MindmapTab({ store }: { store: MindmapStore }): React.ReactElement {
   return React.createElement(MindMapApp, { store });
 }

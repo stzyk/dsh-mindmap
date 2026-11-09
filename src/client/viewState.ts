@@ -42,12 +42,3 @@ export function saveView(docId: string, view: SavedView): void {
     /* 存不下就算了，不能因为记视图位置影响编辑 */
   }
 }
-
-/** 清掉某份文档的记录（文档被删时调用）。 */
-export function clearView(docId: string): void {
-  try {
-    window.localStorage.removeItem(PREFIX + docId);
-  } catch {
-    /* 忽略 */
-  }
-}
