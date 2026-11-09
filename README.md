@@ -30,15 +30,65 @@ DeepSeek Harness 的思维导图插件。在**会话右侧抽屉**里打开，�
 
 ## 装
 
-```bash
-# 本地目录
-dsh plugin --profile web add link:/path/to/dsh-mindmap
+前提：Node ≥ 20，`dsh` 在 PATH 里。下面命令里的 `web` 是 profile 名——装到自己平时
+用的那个 profile（内置的是 `web`，自定义的通常在 `~/.dsh/profiles/` 下）。
 
-# 或从 git
-dsh plugin --profile web add "github:owner/dsh-mindmap#main"
+### 从 GitHub 装
+
+```bash
+dsh plugin --profile web add git+https://github.com/stzyk/dsh-mindmap.git
 ```
 
-装完**重启** `dsh web`（Node 半区变更不会被 ESM 热更吃掉）。
+`lib/` 不进仓库（构建产物），所以这个包带了一个 `prepare` 脚本，安装时现场编译。
+pnpm 默认**拦截**来自 git 的构建脚本，第一次装会失败并打印类似这样的一行：
+
+```text
+allowBuilds:
+  dsh-mindmap@git+https://github.com/stzyk/dsh-mindmap.git#<commit>: true
+```
+
+把那一行原样加到 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`（没有这个文件就新建，
+只写 `allowBuilds` 这一段也可以），然后重跑上面的 `add`。
+
+### 从本地目录装（改代码时用这个）
+
+```bash
+git clone https://github.com/stzyk/dsh-mindmap.git
+cd dsh-mindmap
+npm install && npm run bundle                 # link: 不会替你构建，先产出 lib/
+dsh plugin --profile web add link:$PWD        # 用绝对路径
+```
+
+`link:` 装的是指向源码目录的软链，之后改源码只要 `npm run bundle` 再刷新页面即可。
+
+### 装完要重启
+
+```bash
+dsh web                                        # profile 就叫 web
+dsh --profile desktop-web web                  # 其它 profile（换成你的名字）
+```
+
+`lib/index.js`（Node 半区）的改动只有**重启**才生效；只改客户端 `lib/client.js`
+刷新页面就够了。
+
+### 确认装上了
+
+```bash
+dsh --profile web --dump-config | grep -A1 mindmap
+```
+
+能看到 `- id: dsh-mindmap` 就说明 bundle 已经进装配树（`dsh plugin add` 会自动把它
+追加到 profile 的 `dsh.profile.bundles` 里，不需要手改）。界面上则去会话右侧栏
+首页，能看到「思维导图」卡片。
+
+### 卸载
+
+```bash
+dsh plugin --profile web remove dsh-mindmap
+```
+
+依赖和 `dsh.profile.bundles` 里的登记会一起清掉（数据文件保留在
+`~/.dsh/storages/` 下，要彻底清干净就自己删）。
 
 ## 用
 
